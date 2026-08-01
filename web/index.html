@@ -1,0 +1,612 @@
+<title>PubAPI OffSec — Recon sebagai endpoint</title>
+<meta name="description" content="Public API untuk offensive-security recon: DNS, subdomain, port scan, TLS, header audit, dan utilitas. Ditulis dengan Go + Gin." />
+
+<style>
+  :root {
+    --bg:        #0a0806;
+    --bg-grid:   rgba(255, 176, 0, 0.035);
+    --panel:     #14110b;
+    --panel-2:   #1b160d;
+    --border:    #2c2517;
+    --border-hi: #3d3420;
+    --ink:       #e9ddc2;
+    --ink-dim:   #a2967a;
+    --ink-faint: #6d6350;
+    --amber:     #ffb000;
+    --amber-hi:  #ffd166;
+    --amber-glow: rgba(255, 176, 0, 0.45);
+    --open:      #7bd88f;
+    --blocked:   #ff6161;
+    --info:      #6fd3d8;
+
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+    --maxw: 1120px;
+    --r: 10px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  /* Ambient CRT: faint grid + vignette + scanlines, all non-interactive */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      linear-gradient(var(--bg-grid) 1px, transparent 1px) 0 0 / 100% 34px,
+      linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px) 0 0 / 34px 100%,
+      radial-gradient(120% 80% at 50% -10%, rgba(255,176,0,0.06), transparent 60%),
+      radial-gradient(140% 120% at 50% 120%, rgba(0,0,0,0.6), transparent 55%);
+  }
+  .scanlines {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0) 0,
+      rgba(0,0,0,0) 2px,
+      rgba(0,0,0,0.18) 3px
+    );
+    mix-blend-mode: multiply;
+    opacity: 0.5;
+  }
+
+  .wrap { position: relative; z-index: 2; max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+  a { color: var(--amber); text-decoration: none; }
+  a:hover { color: var(--amber-hi); }
+
+  :focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 3px; }
+
+  .mono { font-family: var(--mono); }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--amber);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .eyebrow::before { content: "▚"; color: var(--amber); opacity: .8; }
+
+  /* ---------- Nav ---------- */
+  header.nav {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    backdrop-filter: blur(8px);
+    background: linear-gradient(to bottom, rgba(10,8,6,0.92), rgba(10,8,6,0.72));
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 62px; }
+  .brand { display: flex; align-items: center; gap: 12px; font-family: var(--mono); font-weight: 700; letter-spacing: 0.04em; }
+  .brand .dot {
+    width: 11px; height: 11px; border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 10px var(--amber-glow), 0 0 3px var(--amber);
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+  .brand b { color: var(--ink); }
+  .brand span { color: var(--amber); }
+  .nav-links { display: flex; align-items: center; gap: 26px; font-family: var(--mono); font-size: 13px; }
+  .nav-links a { color: var(--ink-dim); }
+  .nav-links a:hover { color: var(--amber); }
+  .tag {
+    font-family: var(--mono); font-size: 12px; color: var(--amber);
+    border: 1px solid var(--border-hi); border-radius: 999px; padding: 3px 10px;
+  }
+  .nav-doc {
+    font-family: var(--mono); font-size: 13px; color: var(--amber) !important;
+    border: 1px solid var(--border-hi); border-radius: var(--r); padding: 6px 12px;
+    transition: border-color .2s ease, background .2s ease;
+  }
+  .nav-doc:hover { border-color: var(--amber); background: rgba(255,176,0,0.08); }
+
+  /* ---------- Hero ---------- */
+  .hero { padding: 76px 0 44px; }
+  .hero-grid { display: grid; grid-template-columns: 1.05fr 1.1fr; gap: 46px; align-items: center; }
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(34px, 5.2vw, 58px);
+    line-height: 1.04;
+    letter-spacing: -0.01em;
+    margin: 18px 0 18px;
+    text-wrap: balance;
+    color: var(--ink);
+  }
+  h1 .lit { color: var(--amber); text-shadow: 0 0 20px var(--amber-glow); }
+  .lede { font-size: 18px; color: var(--ink-dim); max-width: 46ch; margin: 0 0 28px; }
+  .cta-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+  .btn {
+    font-family: var(--mono); font-size: 14px; font-weight: 600;
+    padding: 12px 20px; border-radius: var(--r); cursor: pointer;
+    border: 1px solid transparent; transition: transform .12s ease, box-shadow .2s ease, background .2s ease;
+    display: inline-flex; align-items: center; gap: 9px;
+  }
+  .btn-primary { background: var(--amber); color: #1a1200; box-shadow: 0 0 0 rgba(255,176,0,0); }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 26px var(--amber-glow); color:#1a1200; }
+  .btn-ghost { background: transparent; color: var(--ink); border-color: var(--border-hi); }
+  .btn-ghost:hover { border-color: var(--amber); color: var(--amber); }
+
+  /* ---------- Terminal ---------- */
+  .term {
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border: 1px solid var(--border-hi);
+    border-radius: 12px;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.55), 0 0 60px rgba(255,176,0,0.05) inset;
+    overflow: hidden;
+  }
+  .term-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 11px 14px; border-bottom: 1px solid var(--border);
+    background: rgba(0,0,0,0.25);
+  }
+  .term-bar i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .term-bar .r { background: #ff5f56; } .term-bar .y { background: #ffbd2e; } .term-bar .g { background: #27c93f; }
+  .term-title { margin-left: 10px; font-family: var(--mono); font-size: 12px; color: var(--ink-faint); }
+  .term-body {
+    font-family: var(--mono); font-size: 13.5px; line-height: 1.7;
+    padding: 18px 18px 22px; min-height: 320px;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .term-body .prompt { color: var(--amber); }
+  .term-body .cmd { color: var(--ink); }
+  .term-body .flag { color: var(--info); }
+  .term-body .str { color: var(--amber-hi); }
+  .term-body .key { color: var(--info); }
+  .term-body .val { color: var(--ink); }
+  .term-body .ok { color: var(--open); }
+  .term-body .muted { color: var(--ink-faint); }
+  .cursor { display: inline-block; width: 9px; height: 16px; background: var(--amber); vertical-align: -3px; box-shadow: 0 0 8px var(--amber-glow); animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ---------- Stats ---------- */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; margin: 30px 0 10px; }
+  .stat { background: var(--panel); padding: 20px 22px; }
+  .stat .n { font-family: var(--mono); font-size: 26px; color: var(--amber); font-weight: 700; }
+  .stat .l { font-size: 13px; color: var(--ink-dim); margin-top: 2px; }
+
+  /* ---------- Sections ---------- */
+  section { padding: 62px 0; position: relative; z-index: 2; }
+  .sec-head { margin-bottom: 34px; }
+  .sec-head h2 { font-family: var(--mono); font-size: clamp(24px, 3.4vw, 34px); margin: 12px 0 8px; color: var(--ink); letter-spacing: -0.01em; }
+  .sec-head p { color: var(--ink-dim); max-width: 62ch; margin: 0; }
+  .divider { height: 1px; background: linear-gradient(90deg, var(--border-hi), transparent); border: 0; }
+
+  /* ---------- Modules ---------- */
+  .modules { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+  .mod {
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border: 1px solid var(--border); border-radius: 12px; padding: 24px;
+    transition: border-color .2s ease, transform .15s ease;
+  }
+  .mod:hover { border-color: var(--border-hi); transform: translateY(-2px); }
+  .mod-top { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .glyph {
+    width: 40px; height: 40px; border-radius: 9px; display: grid; place-items: center;
+    background: rgba(255,176,0,0.09); border: 1px solid var(--border-hi);
+    font-family: var(--mono); color: var(--amber); font-size: 18px; font-weight: 700;
+  }
+  .mod h3 { margin: 0; font-family: var(--mono); font-size: 18px; color: var(--ink); }
+  .mod .sub { font-size: 12.5px; color: var(--ink-faint); font-family: var(--mono); }
+  .mod ul { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+  .mod li { display: flex; gap: 10px; align-items: baseline; font-size: 14px; color: var(--ink-dim); }
+  .mod li code { font-family: var(--mono); font-size: 12.5px; color: var(--amber-hi); background: rgba(0,0,0,0.3); padding: 1px 7px; border-radius: 5px; border: 1px solid var(--border); white-space: nowrap; }
+
+  /* ---------- Endpoint table ---------- */
+  .table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 14px; }
+  thead th {
+    text-align: left; font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-faint); padding: 14px 18px; background: var(--panel-2); border-bottom: 1px solid var(--border);
+  }
+  tbody td { padding: 13px 18px; border-bottom: 1px solid var(--border); color: var(--ink-dim); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover td { background: rgba(255,176,0,0.03); }
+  .verb { font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 5px; letter-spacing: 0.04em; }
+  .verb.get { color: var(--info); border: 1px solid rgba(111,211,216,0.35); background: rgba(111,211,216,0.08); }
+  .verb.post { color: var(--amber); border: 1px solid var(--border-hi); background: rgba(255,176,0,0.08); }
+  td .path { font-family: var(--mono); color: var(--ink); white-space: nowrap; }
+  td .params { font-family: var(--mono); font-size: 12px; color: var(--ink-faint); }
+
+  /* ---------- Examples ---------- */
+  .examples { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .ex { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .ex-h { font-family: var(--mono); font-size: 12px; color: var(--ink-faint); padding: 12px 16px; border-bottom: 1px solid var(--border); background: rgba(0,0,0,0.25); display:flex; justify-content:space-between; }
+  .ex pre { margin: 0; padding: 16px; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; overflow-x: auto; color: var(--ink-dim); }
+  .ex .prompt { color: var(--amber); }
+  .ex .flag { color: var(--info); }
+  .ex .ok { color: var(--open); }
+  .ex .bad { color: var(--blocked); }
+  .ex .key { color: var(--info); }
+
+  /* ---------- Security band ---------- */
+  .band { background: linear-gradient(180deg, var(--panel-2), var(--panel)); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .safety { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .safe { padding: 22px; border: 1px solid var(--border); border-radius: 12px; background: rgba(0,0,0,0.2); }
+  .safe h4 { font-family: var(--mono); margin: 0 0 8px; color: var(--ink); font-size: 15px; display:flex; align-items:center; gap:9px; }
+  .safe .chip { font-family: var(--mono); font-size: 10.5px; padding: 2px 8px; border-radius: 999px; }
+  .chip.on { color: var(--open); border: 1px solid rgba(123,216,143,0.4); background: rgba(123,216,143,0.08); }
+  .chip.block { color: var(--blocked); border: 1px solid rgba(255,97,97,0.4); background: rgba(255,97,97,0.08); }
+  .safe p { margin: 0; color: var(--ink-dim); font-size: 14px; }
+
+  .disclaimer {
+    margin-top: 26px; border: 1px solid rgba(255,97,97,0.3); border-radius: 12px;
+    background: rgba(255,97,97,0.05); padding: 18px 22px; display: flex; gap: 14px; align-items: flex-start;
+  }
+  .disclaimer .warn { color: var(--blocked); font-size: 22px; line-height: 1; }
+  .disclaimer p { margin: 0; color: var(--ink); font-size: 14px; }
+  .disclaimer b { color: var(--blocked); }
+
+  /* ---------- Quickstart ---------- */
+  .qs { background: #0d0b07; border: 1px solid var(--border-hi); border-radius: 12px; overflow: hidden; }
+  .qs pre { margin: 0; padding: 22px; font-family: var(--mono); font-size: 13.5px; line-height: 1.8; overflow-x: auto; color: var(--ink-dim); }
+  .qs .c { color: var(--ink-faint); }
+  .qs .p { color: var(--amber); }
+  .qs .k { color: var(--info); }
+
+  /* ---------- Footer ---------- */
+  footer { border-top: 1px solid var(--border); padding: 34px 0 50px; position: relative; z-index: 2; }
+  .foot { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; }
+  .foot .brand { font-size: 14px; }
+  .foot p { color: var(--ink-faint); font-size: 13px; font-family: var(--mono); margin: 0; }
+
+  @media (max-width: 880px) {
+    .hero-grid { grid-template-columns: 1fr; gap: 30px; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .modules { grid-template-columns: 1fr; }
+    .examples { grid-template-columns: 1fr; }
+    .safety { grid-template-columns: 1fr; }
+    .nav-links a:not(.nav-doc) { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .brand .dot, .cursor { animation: none; }
+    * { scroll-behavior: auto !important; }
+  }
+  html { scroll-behavior: smooth; }
+</style>
+
+<div class="scanlines"></div>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <div class="brand"><span class="dot"></span><b>PubAPI</b>&nbsp;<span>//</span>&nbsp;<b>OffSec</b></div>
+    <nav class="nav-links">
+      <a href="#modules">Modul</a>
+      <a href="#endpoints">Endpoint</a>
+      <a href="#examples">Contoh</a>
+      <a href="#quickstart">Quickstart</a>
+      <a href="/docs" class="nav-doc">▸ Dokumentasi</a>
+      <span class="tag">v1.0.0</span>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- HERO -->
+  <div class="wrap hero">
+    <div class="hero-grid">
+      <div>
+        <span class="eyebrow">Public Recon API · Go + Gin</span>
+        <h1>Reconnaissance,<br>sebagai <span class="lit">endpoint</span>.</h1>
+        <p class="lede">Satu HTTP API untuk pengintaian ofensif — DNS, subdomain, port scan, TLS, audit header, dan utilitas kripto. Panggil lewat <span class="mono">curl</span>, dapatkan JSON.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#quickstart">▸ Jalankan lokal</a>
+          <a class="btn btn-ghost" href="#endpoints">Lihat 20 endpoint</a>
+        </div>
+      </div>
+
+      <div class="term" aria-label="Contoh sesi terminal">
+        <div class="term-bar">
+          <i class="r"></i><i class="y"></i><i class="g"></i>
+          <span class="term-title">recon@pubapi: ~ curl</span>
+        </div>
+        <div class="term-body" id="term"></div>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="n">20</div><div class="l">endpoint aktif</div></div>
+      <div class="stat"><div class="n">4</div><div class="l">modul ofensif</div></div>
+      <div class="stat"><div class="n">Per-IP</div><div class="l">rate limiting</div></div>
+      <div class="stat"><div class="n">TTL</div><div class="l">cache + SSRF guard</div></div>
+    </div>
+  </div>
+
+  <!-- MODULES -->
+  <section id="modules">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Cakupan</span>
+        <h2>Empat modul, satu envelope</h2>
+        <p>Setiap respons memakai amplop JSON yang sama: <span class="mono">{ success, data, timestamp }</span>. Konsisten untuk recon, scan, analisis web, maupun utilitas.</p>
+      </div>
+      <div class="modules">
+        <article class="mod">
+          <div class="mod-top"><div class="glyph">◈</div><div><h3>Recon</h3><div class="sub">/api/v1/recon</div></div></div>
+          <ul>
+            <li><code>GET /dns</code> Resolusi A/AAAA/CNAME/MX/NS/TXT</li>
+            <li><code>GET /subdomain</code> Enum subdomain: brute + passive (crt.sh)</li>
+            <li><code>GET /whois</code> WHOIS terstruktur + raw opsional</li>
+            <li><code>GET /reverse-ip</code> Reverse DNS (PTR)</li>
+            <li><code>GET /email-security</code> SPF/DKIM/DMARC/DNSSEC + grade</li>
+            <li><code>GET /takeover</code> Deteksi subdomain takeover</li>
+            <li><code>GET /profile</code> Profil recon domain agregat</li>
+            <li><code>GET /ip</code> GeoIP + ASN + reverse</li>
+            <li><code>GET /wayback</code> URL historis (web.archive.org)</li>
+          </ul>
+        </article>
+        <article class="mod">
+          <div class="mod-top"><div class="glyph">⊹</div><div><h3>Scan</h3><div class="sub">/api/v1/scan</div></div></div>
+          <ul>
+            <li><code>POST /ports</code> TCP scan konkuren + banner grab</li>
+            <li><code>GET /banner</code> Ambil banner satu host:port</li>
+            <li><code>—</code> Label service umum (ssh, http, mysql…)</li>
+            <li><code>—</code> Spec port fleksibel: <span class="mono">22,80,8000-8100</span></li>
+          </ul>
+        </article>
+        <article class="mod">
+          <div class="mod-top"><div class="glyph">◭</div><div><h3>Web</h3><div class="sub">/api/v1/web</div></div></div>
+          <ul>
+            <li><code>GET /headers</code> Audit security header + grade A–F</li>
+            <li><code>GET /tech</code> Fingerprint teknologi web</li>
+            <li><code>GET /tls</code> Inspeksi sertifikat & cipher TLS</li>
+            <li><code>GET /surface</code> robots/sitemap/security.txt, metode, CORS</li>
+            <li><code>POST /probe</code> Batch liveness + favicon hash (mmh3)</li>
+          </ul>
+        </article>
+        <article class="mod">
+          <div class="mod-top"><div class="glyph">⊞</div><div><h3>Util</h3><div class="sub">/api/v1/util</div></div></div>
+          <ul>
+            <li><code>POST /hash</code> MD5/SHA1/SHA256/SHA512/CRC32</li>
+            <li><code>POST /hash-identify</code> Tebak jenis hash</li>
+            <li><code>POST /encode</code> base64 · base32 · hex · url</li>
+            <li><code>POST /jwt-decode</code> Bongkar JWT (tanpa verifikasi)</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ENDPOINTS -->
+  <section id="endpoints" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Referensi</span>
+        <h2>Peta endpoint lengkap</h2>
+        <p>Dua puluh endpoint v1 plus <span class="mono">GET /api</span> (katalog) dan <span class="mono">GET /health</span>.</p>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Method</th><th>Path</th><th>Parameter</th><th>Fungsi</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><span class="verb get">GET</span></td><td><span class="path">/api/v1/recon/dns</span></td><td><span class="params">domain</span></td><td>Resolusi record DNS</td></tr>
+            <tr><td><span class="verb get">GET</span></td><td><span class="path">/api/v1/recon/subdomain</span></td><td><span class="params">domain, mode?</span></td><td>Enum subdomain (brute + crt.sh)</td></tr>
+            <tr><td><span class="verb get">GET</span></td><td><span class="path">/api/v1/recon/whois</span></td><td><span class="params">domain, raw?</span></td><td>WHOIS lookup</td></tr>
+            <tr><td><span class="verb get">GET</span></td><td><span class="path">/api/v1/recon/reverse-ip</span></td><td><span class="params">ip</span></td><td>Reverse DNS (PTR)</td></tr>
+            <tr><td><span class="verb get">GET</span></td><td><span class="path">/api/v1/recon/email-security</span></td><td><span class="params">domain</span></td><td>SPF/DKIM/DMARC/DNSSEC + grade</td></tr>
+            <tr><td><span class="verb get">GET</span></td><td><span class="path">/api/v1/recon/takeover</span></td><td><span class="params">domain</span></td><td>Deteksi subdomain takeover</td></tr>
+            <tr><td><span class="verb get">GET</span></td><td><span class="path">/api/v1/recon/profile</span></td><td><span class="params">domain</span></td><td>Profil recon domain agregat</td></tr>
+            <tr><td><span class="verb get">GET</span></td><td><span class="path">/api/v1/recon/ip</span></td><td><span class="params">ip</span></td><td>GeoIP + ASN + reverse</td></tr>
+            <tr><td><span class="verb get">GET</span></td><td><span class="path">/api/v1/recon/wayback</span></td><td><span class="params">domain, limit?</span></td><td>URL historis (web.archive.org)</td></tr>
+            <tr><td><span class="verb post">POST</span></td><td><span class="path">/api/v1/scan/ports</span></td><td><span class="params">{host, ports?, banner?}</span></td><td>Port scan + banner</td></tr>
+            <tr><td><span class="verb get">GET</span></td><td><span class="path">/api/v1/scan/banner</span></td><td><span class="params">host, port</span></td><td>Banner grab tunggal</td></tr>
+            <tr><td><span class="verb get">GET</span></td><td><span class="path">/api/v1/web/headers</span></td><td><span class="params">url</span></td><td>Audit security header</td></tr>
+            <tr><td><span class="verb get">GET</span></td><td><span class="path">/api/v1/web/tech</span></td><td><span class="params">url</span></td><td>Fingerprint teknologi</td></tr>
+            <tr><td><span class="verb get">GET</span></td><td><span class="path">/api/v1/web/tls</span></td><td><span class="params">host, port?</span></td><td>Inspeksi sertifikat TLS</td></tr>
+            <tr><td><span class="verb get">GET</span></td><td><span class="path">/api/v1/web/surface</span></td><td><span class="params">url</span></td><td>robots/sitemap/methods/CORS</td></tr>
+            <tr><td><span class="verb post">POST</span></td><td><span class="path">/api/v1/web/probe</span></td><td><span class="params">{hosts:[...]}</span></td><td>Batch liveness + favicon hash</td></tr>
+            <tr><td><span class="verb post">POST</span></td><td><span class="path">/api/v1/util/hash</span></td><td><span class="params">{text, algo?}</span></td><td>Hitung digest hash</td></tr>
+            <tr><td><span class="verb post">POST</span></td><td><span class="path">/api/v1/util/hash-identify</span></td><td><span class="params">{hash}</span></td><td>Identifikasi jenis hash</td></tr>
+            <tr><td><span class="verb post">POST</span></td><td><span class="path">/api/v1/util/encode</span></td><td><span class="params">{action, scheme, text}</span></td><td>Encode / decode</td></tr>
+            <tr><td><span class="verb post">POST</span></td><td><span class="path">/api/v1/util/jwt-decode</span></td><td><span class="params">{token}</span></td><td>Decode JWT</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- EXAMPLES -->
+  <section id="examples" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Output nyata</span>
+        <h2>Contoh respons</h2>
+        <p> Diambil langsung dari pemanggilan aktual terhadap target uji publik.</p>
+      </div>
+      <div class="examples">
+        <div class="ex">
+          <div class="ex-h"><span>port scan + banner</span><span>scanme.nmap.org</span></div>
+<pre><span class="prompt">$</span> curl -X POST .../scan/ports \
+  -d '{"host":"scanme.nmap.org",
+       "ports":"22,80,443",
+       <span class="flag">"banner"</span>:true}'
+
+<span class="key">"port"</span>: 22, <span class="ok">"open": true</span>,
+<span class="key">"service"</span>: "ssh",
+<span class="key">"banner"</span>: "SSH-2.0-OpenSSH_6.6.1p1"
+<span class="key">"port"</span>: 80, <span class="ok">"open": true</span>,
+<span class="key">"port"</span>: 443, "open": false</pre>
+        </div>
+        <div class="ex">
+          <div class="ex-h"><span>tls inspect</span><span>github.com:443</span></div>
+<pre><span class="prompt">$</span> curl ".../web/tls?host=github.com"
+
+<span class="key">"version"</span>: "TLS 1.3",
+<span class="key">"cipher_suite"</span>:
+   "TLS_AES_128_GCM_SHA256",
+<span class="key">"issuer"</span>: "Sectigo ... E36",
+<span class="key">"days_until_expiry"</span>: 60,
+<span class="ok">"expired": false</span></pre>
+        </div>
+        <div class="ex">
+          <div class="ex-h"><span>ssrf guard</span><span>403 blocked</span></div>
+<pre><span class="prompt">$</span> curl ".../web/headers?
+       url=http://127.0.0.1"
+
+<span class="bad">"success": false</span>,
+<span class="key">"error"</span>: {
+ <span class="key">"code"</span>: "target_blocked",
+ <span class="key">"message"</span>: "targeting private,
+   loopback ... is disabled"
+}</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECURITY BAND -->
+  <section class="band">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Aman secara default</span>
+        <h2>API publik, tanpa auth — tetap dijaga</h2>
+        <p>Karena terbuka tanpa autentikasi, proteksi bergeser ke lapisan lain: pembatasan laju, penolakan target internal, dan validasi input di setiap parameter.</p>
+      </div>
+      <div class="safety">
+        <div class="safe">
+          <h4>SSRF Guard <span class="chip block">default ON</span></h4>
+          <p>Menolak target private, loopback, link-local, dan endpoint metadata cloud <span class="mono">169.254.169.254</span>. Cegah penyalahgunaan untuk menyisir jaringan internal.</p>
+        </div>
+        <div class="safe">
+          <h4>Rate Limit <span class="chip on">per-IP</span></h4>
+          <p>Token-bucket per alamat IP dengan eviction otomatis. Balas <span class="mono">429</span> saat burst habis, plus header <span class="mono">Retry-After</span>.</p>
+        </div>
+        <div class="safe">
+          <h4>Batas & Validasi <span class="chip on">enforced</span></h4>
+          <p>Cap jumlah port, ukuran body, dan panjang banner. Domain/host/URL/IP divalidasi sebelum menyentuh jaringan.</p>
+        </div>
+      </div>
+
+      <div class="disclaimer">
+        <span class="warn">⚠</span>
+        <p><b>Hanya untuk pengujian yang diizinkan.</b> Tool ini melakukan reconnaissance aktif terhadap target yang Anda tentukan. Gunakan hanya pada sistem yang Anda miliki atau memiliki izin tertulis eksplisit untuk diuji. Tanggung jawab penggunaan ada pada Anda.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- QUICKSTART -->
+  <section id="quickstart">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Mulai</span>
+        <h2>Jalankan dalam 30 detik</h2>
+        <p>Butuh Go 1.26+. Konfigurasi lewat environment variable — default sudah aman untuk deployment publik.</p>
+      </div>
+      <div class="qs">
+<pre><span class="c"># clone & jalankan</span>
+<span class="p">$</span> go mod download
+<span class="p">$</span> go run .              <span class="c"># listen :8080</span>
+
+<span class="c"># atau via Makefile</span>
+<span class="p">$</span> make run
+<span class="p">$</span> make test             <span class="c"># unit test hijau</span>
+<span class="p">$</span> make build            <span class="c"># -> bin/pubapi</span>
+
+<span class="c"># atau Docker (multi-stage, distroless)</span>
+<span class="p">$</span> make docker
+<span class="p">$</span> docker run -p <span class="k">8080</span>:<span class="k">8080</span> pubapi-offsec
+
+<span class="c"># coba endpoint pertama</span>
+<span class="p">$</span> curl <span class="k">"localhost:8080/api/v1/recon/dns?domain=example.com"</span></pre>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div class="brand"><span class="dot"></span><b>PubAPI</b>&nbsp;<span>//</span>&nbsp;<b>OffSec</b></div>
+    <p>Go 1.26 · Gin · MIT-style · untuk riset keamanan &amp; edukasi</p>
+  </div>
+</footer>
+
+<script>
+  // Hero terminal: type the curl command, then stream the JSON response.
+  (function () {
+    const el = document.getElementById("term");
+    if (!el) return;
+
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    // Each token: {t: text, c: class}. A token with `nl` breaks the line.
+    const script = [
+      { t: "$ ", c: "prompt" },
+      { t: "curl ", c: "cmd" },
+      { t: "\"https://api/v1/recon/dns?domain=", c: "str" },
+      { t: "example.com", c: "str" },
+      { t: "\"", c: "str", nl: 2 },
+      { t: "{", c: "muted", nl: 1 },
+      { t: "  \"success\"", c: "key" }, { t: ": ", c: "muted" }, { t: "true", c: "ok", nl: 1 },
+      { t: "  \"data\"", c: "key" }, { t: ": {", c: "muted", nl: 1 },
+      { t: "    \"domain\"", c: "key" }, { t: ": \"example.com\",", c: "val", nl: 1 },
+      { t: "    \"a\"", c: "key" }, { t: ": [\"104.20.23.154\", \"172.66.147.243\"],", c: "val", nl: 1 },
+      { t: "    \"ns\"", c: "key" }, { t: ": [\"elliott.ns.cloudflare.com\",", c: "val", nl: 1 },
+      { t: "           \"hera.ns.cloudflare.com\"],", c: "val", nl: 1 },
+      { t: "    \"txt\"", c: "key" }, { t: ": [\"v=spf1 -all\"]", c: "val", nl: 1 },
+      { t: "  }", c: "muted", nl: 1 },
+      { t: "}", c: "muted" }
+    ];
+
+    function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+    function renderAll() {
+      el.innerHTML = script.map(function (tok) {
+        return "<span class=\"" + tok.c + "\">" + esc(tok.t) + "</span>" + "\n".repeat(tok.nl || 0);
+      }).join("");
+    }
+
+    if (reduce) { renderAll(); return; }
+
+    let ti = 0, ci = 0;
+    const cursor = "<span class=\"cursor\"></span>";
+
+    function step() {
+      let html = "";
+      for (let i = 0; i < ti; i++) {
+        const tok = script[i];
+        html += "<span class=\"" + tok.c + "\">" + esc(tok.t) + "</span>" + "\n".repeat(tok.nl || 0);
+      }
+      if (ti < script.length) {
+        const tok = script[ti];
+        html += "<span class=\"" + tok.c + "\">" + esc(tok.t.slice(0, ci)) + "</span>";
+      }
+      el.innerHTML = html + cursor;
+
+      if (ti >= script.length) return;
+      const tok = script[ti];
+      if (ci < tok.t.length) {
+        ci++;
+        // Command types char-by-char; response streams faster line-by-line.
+        setTimeout(step, ti <= 4 ? 34 : 4);
+      } else {
+        ti++; ci = 0;
+        html += "\n".repeat(tok.nl || 0);
+        setTimeout(step, ti <= 5 ? 90 : (tok.nl ? 130 : 10));
+      }
+    }
+    setTimeout(step, 400);
+  })();
+</script>

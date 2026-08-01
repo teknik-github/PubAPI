@@ -1,0 +1,800 @@
+<title>Dokumentasi — PubAPI OffSec</title>
+<meta name="description" content="Dokumentasi lengkap PubAPI OffSec: cara pakai setiap endpoint recon, scan, web, dan util — parameter, contoh request, dan respons." />
+
+<style>
+  :root {
+    --bg:#0a0806; --bg-grid:rgba(255,176,0,0.035);
+    --panel:#14110b; --panel-2:#1b160d;
+    --border:#2c2517; --border-hi:#3d3420;
+    --ink:#e9ddc2; --ink-dim:#a2967a; --ink-faint:#6d6350;
+    --amber:#ffb000; --amber-hi:#ffd166; --amber-glow:rgba(255,176,0,0.45);
+    --open:#7bd88f; --blocked:#ff6161; --info:#6fd3d8;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --r:10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); line-height:1.65;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  }
+  body::before {
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background:
+      linear-gradient(var(--bg-grid) 1px, transparent 1px) 0 0 / 100% 34px,
+      linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px) 0 0 / 34px 100%,
+      radial-gradient(120% 60% at 50% -10%, rgba(255,176,0,0.05), transparent 60%);
+  }
+  .scanlines { position:fixed; inset:0; pointer-events:none; z-index:1;
+    background:repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0, rgba(0,0,0,0) 2px, rgba(0,0,0,0.18) 3px);
+    mix-blend-mode:multiply; opacity:.5; }
+
+  a { color:var(--amber); text-decoration:none; }
+  a:hover { color:var(--amber-hi); }
+  :focus-visible { outline:2px solid var(--amber); outline-offset:3px; border-radius:3px; }
+  .mono { font-family:var(--mono); }
+  code { font-family:var(--mono); }
+
+  /* Nav */
+  header.nav { position:sticky; top:0; z-index:20; backdrop-filter:blur(8px);
+    background:linear-gradient(to bottom, rgba(10,8,6,0.94), rgba(10,8,6,0.78));
+    border-bottom:1px solid var(--border); }
+  .nav-inner { max-width:1240px; margin:0 auto; padding:0 24px; height:62px;
+    display:flex; align-items:center; justify-content:space-between; position:relative; z-index:2; }
+  .brand { display:flex; align-items:center; gap:12px; font-family:var(--mono); font-weight:700; letter-spacing:.04em; }
+  .brand .dot { width:11px; height:11px; border-radius:50%; background:var(--amber);
+    box-shadow:0 0 10px var(--amber-glow),0 0 3px var(--amber); animation:pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+  .brand b { color:var(--ink); } .brand span { color:var(--amber); }
+  .nav-links { display:flex; align-items:center; gap:22px; font-family:var(--mono); font-size:13px; }
+  .nav-links a { color:var(--ink-dim); }
+  .nav-links a:hover { color:var(--amber); }
+  .nav-links a.active { color:var(--amber); }
+  .tag { font-family:var(--mono); font-size:12px; color:var(--amber);
+    border:1px solid var(--border-hi); border-radius:999px; padding:3px 10px; }
+
+  /* Layout */
+  .shell { max-width:1240px; margin:0 auto; padding:0 24px; position:relative; z-index:2;
+    display:grid; grid-template-columns:250px 1fr; gap:44px; }
+  aside {
+    position:sticky; top:62px; align-self:start; height:calc(100vh - 62px); overflow-y:auto;
+    padding:30px 8px 40px 0; border-right:1px solid var(--border);
+  }
+  aside h5 { font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--ink-faint); margin:22px 0 9px; }
+  aside h5:first-child { margin-top:0; }
+  aside a { display:block; font-size:13.5px; color:var(--ink-dim); padding:5px 12px; border-radius:7px;
+    border-left:2px solid transparent; }
+  aside a:hover { color:var(--amber); background:rgba(255,176,0,0.04); }
+  aside a code { font-size:12px; color:var(--amber-hi); }
+
+  main { padding:38px 0 90px; min-width:0; }
+  .eyebrow { font-family:var(--mono); font-size:12px; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--amber); display:inline-flex; align-items:center; gap:8px; }
+  .eyebrow::before { content:"▚"; opacity:.8; }
+  h1 { font-family:var(--mono); font-size:clamp(30px,4.4vw,44px); line-height:1.08; margin:14px 0 12px;
+    letter-spacing:-.01em; color:var(--ink); text-wrap:balance; }
+  .intro { color:var(--ink-dim); font-size:17px; max-width:64ch; margin:0 0 10px; }
+
+  h2 { font-family:var(--mono); font-size:24px; color:var(--ink); margin:56px 0 6px;
+    padding-top:20px; border-top:1px solid var(--border); letter-spacing:-.01em; }
+  h2:first-of-type { border-top:0; }
+  h2 .kicker { display:block; font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--amber); margin-bottom:6px; }
+  .sec-desc { color:var(--ink-dim); max-width:66ch; margin:8px 0 24px; }
+
+  p { max-width:70ch; }
+  .lead-note { color:var(--ink-dim); }
+
+  /* Tables */
+  .tbl-scroll { overflow-x:auto; border:1px solid var(--border); border-radius:10px; margin:16px 0; }
+  table { border-collapse:collapse; width:100%; min-width:520px; font-size:14px; }
+  th { text-align:left; font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--ink-faint); padding:12px 16px; background:var(--panel-2); border-bottom:1px solid var(--border); }
+  td { padding:11px 16px; border-bottom:1px solid var(--border); color:var(--ink-dim); vertical-align:top; }
+  tr:last-child td { border-bottom:0; }
+  td code, th code { font-family:var(--mono); font-size:12.5px; color:var(--amber-hi); }
+  .req-yes { color:var(--blocked); font-family:var(--mono); font-size:11px; }
+  .req-no { color:var(--ink-faint); font-family:var(--mono); font-size:11px; }
+
+  /* Endpoint card */
+  .ep { background:linear-gradient(180deg,var(--panel-2),var(--panel));
+    border:1px solid var(--border); border-radius:12px; padding:22px; margin:20px 0; scroll-margin-top:80px; }
+  .ep-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:6px; }
+  .verb { font-family:var(--mono); font-size:11px; font-weight:700; padding:3px 9px; border-radius:5px; letter-spacing:.04em; }
+  .verb.get { color:var(--info); border:1px solid rgba(111,211,216,.35); background:rgba(111,211,216,.08); }
+  .verb.post { color:var(--amber); border:1px solid var(--border-hi); background:rgba(255,176,0,.08); }
+  .ep-path { font-family:var(--mono); font-size:15px; color:var(--ink); }
+  .ep-desc { color:var(--ink-dim); margin:6px 0 14px; }
+  .lbl { font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); margin:16px 0 8px; }
+
+  /* Code blocks */
+  .code { background:#0d0b07; border:1px solid var(--border); border-radius:9px; overflow:hidden; margin:6px 0 4px; }
+  .code-h { display:flex; justify-content:space-between; align-items:center; padding:8px 14px;
+    border-bottom:1px solid var(--border); background:rgba(0,0,0,.28); }
+  .code-h span { font-family:var(--mono); font-size:11px; color:var(--ink-faint); letter-spacing:.06em; }
+  .code pre { margin:0; padding:14px 16px; overflow-x:auto; font-family:var(--mono); font-size:12.8px; line-height:1.65; color:var(--ink-dim); }
+  .code .p { color:var(--amber); }      /* prompt */
+  .code .u { color:var(--amber-hi); }   /* url/string */
+  .code .f { color:var(--info); }       /* flag */
+  .code .k { color:var(--info); }       /* json key */
+  .code .s { color:var(--amber-hi); }   /* json string */
+  .code .n { color:var(--ink); }        /* number */
+  .code .ok { color:var(--open); }
+  .code .bad { color:var(--blocked); }
+  .code .c { color:var(--ink-faint); }  /* comment */
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+
+  /* Callouts */
+  .note { border:1px solid var(--border-hi); border-left:3px solid var(--amber); border-radius:8px;
+    background:rgba(255,176,0,.05); padding:12px 16px; margin:14px 0; font-size:14px; color:var(--ink-dim); }
+  .note.warn { border-left-color:var(--blocked); background:rgba(255,97,97,.06); }
+  .note b { color:var(--ink); }
+  .note.warn b { color:var(--blocked); }
+
+  .pill { display:inline-block; font-family:var(--mono); font-size:11px; padding:2px 8px; border-radius:999px; margin-left:6px; }
+  .pill.ok { color:var(--open); border:1px solid rgba(123,216,143,.4); background:rgba(123,216,143,.08); }
+  .pill.block { color:var(--blocked); border:1px solid rgba(255,97,97,.4); background:rgba(255,97,97,.08); }
+
+  footer { border-top:1px solid var(--border); padding:30px 0 46px; margin-top:20px; }
+  .foot { max-width:1240px; margin:0 auto; padding:0 24px; display:flex; justify-content:space-between;
+    flex-wrap:wrap; gap:12px; align-items:center; position:relative; z-index:2; }
+  .foot p { font-family:var(--mono); font-size:13px; color:var(--ink-faint); margin:0; }
+
+  html { scroll-behavior:smooth; }
+  @media (prefers-reduced-motion: reduce) { html{scroll-behavior:auto} .brand .dot{animation:none} }
+  @media (max-width: 940px) {
+    .shell { grid-template-columns:1fr; gap:0; }
+    aside { display:none; }
+    .grid2 { grid-template-columns:1fr; }
+    .nav-links a:not(.active) { display:none; }
+  }
+</style>
+
+<div class="scanlines"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="/"><span class="dot"></span><b>PubAPI</b>&nbsp;<span>//</span>&nbsp;<b>OffSec</b></a>
+    <nav class="nav-links">
+      <a href="/">Beranda</a>
+      <a href="/#endpoints">Endpoint</a>
+      <a href="/docs" class="active">Dokumentasi</a>
+      <span class="tag">v1.0.0</span>
+    </nav>
+  </div>
+</header>
+
+<div class="shell">
+  <!-- SIDEBAR -->
+  <aside>
+    <h5>Mulai</h5>
+    <a href="#overview">Ikhtisar</a>
+    <a href="#envelope">Format respons</a>
+    <a href="#auth">Autentikasi</a>
+    <a href="#errors">Kode error</a>
+    <a href="#ratelimit">Rate limit</a>
+    <a href="#caching">Caching</a>
+    <a href="#ssrf">SSRF guard</a>
+    <a href="#config">Konfigurasi</a>
+
+    <h5>Recon</h5>
+    <a href="#dns"><code>GET</code> /recon/dns</a>
+    <a href="#subdomain"><code>GET</code> /recon/subdomain</a>
+    <a href="#whois"><code>GET</code> /recon/whois</a>
+    <a href="#reverse-ip"><code>GET</code> /recon/reverse-ip</a>
+    <a href="#email-security"><code>GET</code> /recon/email-security</a>
+    <a href="#takeover"><code>GET</code> /recon/takeover</a>
+    <a href="#profile"><code>GET</code> /recon/profile</a>
+    <a href="#ip"><code>GET</code> /recon/ip</a>
+    <a href="#wayback"><code>GET</code> /recon/wayback</a>
+
+    <h5>Scan</h5>
+    <a href="#ports"><code>POST</code> /scan/ports</a>
+    <a href="#banner"><code>GET</code> /scan/banner</a>
+
+    <h5>Web</h5>
+    <a href="#headers"><code>GET</code> /web/headers</a>
+    <a href="#tech"><code>GET</code> /web/tech</a>
+    <a href="#tls"><code>GET</code> /web/tls</a>
+    <a href="#surface"><code>GET</code> /web/surface</a>
+    <a href="#probe"><code>POST</code> /web/probe</a>
+
+    <h5>Util</h5>
+    <a href="#hash"><code>POST</code> /util/hash</a>
+    <a href="#hash-identify"><code>POST</code> /util/hash-identify</a>
+    <a href="#encode"><code>POST</code> /util/encode</a>
+    <a href="#jwt-decode"><code>POST</code> /util/jwt-decode</a>
+  </aside>
+
+  <!-- CONTENT -->
+  <main>
+    <span class="eyebrow">Dokumentasi · v1</span>
+    <h1>Cara menggunakan PubAPI</h1>
+    <p class="intro">Semua endpoint berada di bawah <code class="mono">/api/v1</code>. Request cukup <code class="mono">curl</code>; respons selalu JSON dengan amplop yang sama. Contoh di bawah memakai base URL default <code class="mono">http://localhost:8080</code>.</p>
+
+    <div class="note warn"><b>⚠ Hanya untuk pengujian yang diizinkan.</b> Endpoint recon/scan melakukan koneksi aktif ke target yang Anda tentukan. Gunakan hanya pada aset milik sendiri atau yang punya izin tertulis.</div>
+
+    <!-- OVERVIEW -->
+    <h2 id="overview"><span class="kicker">Mulai</span>Ikhtisar</h2>
+    <p class="sec-desc">Server ditulis dengan Go + Gin. Jalankan dengan <code>go run .</code> atau <code>make run</code>; secara default mendengarkan di port <code>8080</code>. Katalog endpoint machine-readable tersedia di <code>GET /api</code>, dan liveness di <code>GET /health</code>.</p>
+    <div class="code">
+      <div class="code-h"><span>base url</span><span>default</span></div>
+<pre><span class="c"># landing page (HTML)</span>
+<span class="p">GET</span>  http://localhost:8080/
+<span class="c"># dokumentasi ini (HTML)</span>
+<span class="p">GET</span>  http://localhost:8080/docs
+<span class="c"># katalog endpoint (JSON)</span>
+<span class="p">GET</span>  http://localhost:8080/api
+<span class="c"># liveness probe</span>
+<span class="p">GET</span>  http://localhost:8080/health</pre>
+    </div>
+
+    <!-- ENVELOPE -->
+    <h2 id="envelope"><span class="kicker">Kontrak</span>Format respons</h2>
+    <p class="sec-desc">Setiap respons — sukses maupun gagal — memakai amplop yang sama sehingga mudah diparse secara seragam.</p>
+    <div class="grid2">
+      <div class="code">
+        <div class="code-h"><span>sukses</span><span>200</span></div>
+<pre>{
+  <span class="k">"success"</span>: <span class="ok">true</span>,
+  <span class="k">"data"</span>: { <span class="c">/* payload */</span> },
+  <span class="k">"timestamp"</span>: <span class="s">"2026-08-01T21:53:00Z"</span>
+}</pre>
+      </div>
+      <div class="code">
+        <div class="code-h"><span>gagal</span><span>4xx / 5xx</span></div>
+<pre>{
+  <span class="k">"success"</span>: <span class="bad">false</span>,
+  <span class="k">"error"</span>: {
+    <span class="k">"code"</span>: <span class="s">"invalid_input"</span>,
+    <span class="k">"message"</span>: <span class="s">"Provide a valid ?domain="</span>
+  },
+  <span class="k">"timestamp"</span>: <span class="s">"2026-08-01T21:53:00Z"</span>
+}</pre>
+      </div>
+    </div>
+
+    <!-- AUTH -->
+    <h2 id="auth"><span class="kicker">Akses</span>Autentikasi</h2>
+    <p class="sec-desc">Autentikasi bersifat <b>opsional</b> dan mati secara default (endpoint terbuka, dilindungi rate limit). Aktifkan dengan <code>AUTH_ENABLED=true</code>. Saat aktif, seluruh <code>/api/v1/*</code> memerlukan kredensial — kecuali <code>POST /api/v1/auth/token</code> dan halaman publik (<code>/</code>, <code>/docs</code>, <code>/api</code>, <code>/health</code>).</p>
+    <p class="lead-note">Dua cara memberi kredensial pada request:</p>
+    <div class="tbl-scroll"><table><thead><tr><th>Metode</th><th>Header</th><th>Keterangan</th></tr></thead>
+      <tbody>
+        <tr><td>API key</td><td><code>X-API-Key: &lt;key&gt;</code></td><td>Key statis dari <code>AUTH_API_KEYS</code></td></tr>
+        <tr><td>Bearer</td><td><code>Authorization: Bearer &lt;api-key|jwt&gt;</code></td><td>Boleh API key langsung, atau JWT hasil token endpoint</td></tr>
+      </tbody></table></div>
+    <div class="lbl">Tukar API key → JWT</div>
+    <div class="code"><div class="code-h"><span>POST /api/v1/auth/token</span><span>public</span></div>
+<pre><span class="p">$</span> curl -X <span class="f">POST</span> <span class="u">http://localhost:8080/api/v1/auth/token</span> \
+     -d <span class="u">'{"api_key":"secret-key-123"}'</span>
+
+<span class="c"># respons</span>
+{ <span class="k">"data"</span>: {
+  <span class="k">"token"</span>: <span class="s">"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."</span>,
+  <span class="k">"token_type"</span>: <span class="s">"Bearer"</span>, <span class="k">"expires_in"</span>: <span class="n">1800</span> } }</pre></div>
+    <div class="lbl">Pakai token pada request</div>
+    <div class="code"><div class="code-h"><span>authenticated request</span><span>200 / 401</span></div>
+<pre><span class="c"># dengan API key</span>
+<span class="p">$</span> curl <span class="u">".../api/v1/recon/dns?domain=example.com"</span> -H <span class="u">"X-API-Key: secret-key-123"</span>
+<span class="c"># dengan JWT</span>
+<span class="p">$</span> curl <span class="u">".../api/v1/recon/dns?domain=example.com"</span> -H <span class="u">"Authorization: Bearer $TOKEN"</span>
+
+<span class="c"># tanpa/keliru kredensial -> 401</span>
+{ <span class="k">"success"</span>: <span class="bad">false</span>, <span class="k">"error"</span>: { <span class="k">"code"</span>: <span class="s">"unauthorized"</span>, ... } }</pre></div>
+    <div class="note">JWT ditandatangani HS256 dengan <code>JWT_SECRET</code>, berlaku <code>JWT_TTL_MINUTES</code> (default 60). Bila secret tak diset saat auth aktif, server memakai secret acak sementara (token reset tiap restart).</div>
+
+    <!-- ERRORS -->
+    <h2 id="errors"><span class="kicker">Referensi</span>Kode error</h2>
+    <div class="tbl-scroll">
+      <table>
+        <thead><tr><th>HTTP</th><th>code</th><th>Arti</th></tr></thead>
+        <tbody>
+          <tr><td><code>400</code></td><td><code>invalid_input</code></td><td>Parameter hilang atau tidak valid</td></tr>
+          <tr><td><code>401</code></td><td><code>unauthorized</code></td><td>Kredensial hilang/keliru (saat auth aktif)</td></tr>
+          <tr><td><code>403</code></td><td><code>target_blocked</code></td><td>Target private/loopback ditolak SSRF guard</td></tr>
+          <tr><td><code>404</code></td><td><code>not_found</code></td><td>Endpoint tidak ada</td></tr>
+          <tr><td><code>429</code></td><td><code>rate_limited</code></td><td>Melebihi batas laju per-IP</td></tr>
+          <tr><td><code>502</code></td><td><code>lookup_failed</code> · <code>fetch_failed</code> · <code>tls_failed</code></td><td>Operasi ke target gagal (DNS/HTTP/TLS)</td></tr>
+          <tr><td><code>500</code></td><td><code>internal_error</code></td><td>Kesalahan tak terduga</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- RATE LIMIT -->
+    <h2 id="ratelimit"><span class="kicker">Proteksi</span>Rate limit</h2>
+    <p class="sec-desc">Pembatasan token-bucket per alamat IP. Default <code>5</code> req/detik dengan burst <code>10</code>. Saat terlampaui, server membalas <code>429</code> beserta header <code>Retry-After: 1</code>.</p>
+    <div class="code">
+      <div class="code-h"><span>429 response</span><span>rate_limited</span></div>
+<pre>{ <span class="k">"success"</span>: <span class="bad">false</span>,
+  <span class="k">"error"</span>: { <span class="k">"code"</span>: <span class="s">"rate_limited"</span>,
+            <span class="k">"message"</span>: <span class="s">"Too many requests. Please slow down."</span> } }</pre>
+    </div>
+
+    <!-- CACHING -->
+    <h2 id="caching"><span class="kicker">Performa</span>Caching</h2>
+    <p class="sec-desc">Lookup eksternal yang lambat/rate-limited di-cache in-memory dengan TTL per-jenis, sehingga query berulang nyaris instan dan beban ke pihak ketiga berkurang. Aktif default; matikan dengan <code>CACHE_ENABLED=false</code>. Statistik di <code>GET /health</code>.</p>
+    <div class="tbl-scroll"><table><thead><tr><th>Data</th><th>Sumber</th><th>TTL</th></tr></thead>
+      <tbody>
+        <tr><td>DNS records</td><td>resolver</td><td>60 detik</td></tr>
+        <tr><td>Passive subdomain</td><td>crt.sh</td><td>10 menit</td></tr>
+        <tr><td>Wayback URLs</td><td>web.archive.org</td><td>1 jam</td></tr>
+        <tr><td>WHOIS</td><td>registry</td><td>6 jam</td></tr>
+        <tr><td>GeoIP + ASN</td><td>ip-api.com</td><td>24 jam</td></tr>
+      </tbody></table></div>
+
+    <!-- SSRF -->
+    <h2 id="ssrf"><span class="kicker">Proteksi</span>SSRF guard</h2>
+    <p class="sec-desc">Endpoint yang menyentuh jaringan (<code>reverse-ip</code>, <code>scan/*</code>, <code>web/*</code>) menolak target non-publik secara default: private, loopback, link-local, dan endpoint metadata cloud <code>169.254.169.254</code>. Ini mencegah API publik disalahgunakan untuk menyisir jaringan internal Anda.</p>
+    <div class="note">Untuk pengujian internal yang sah pada jaringan terisolasi, set <code>ALLOW_PRIVATE_TARGETS=true</code>. <b>Jangan</b> aktifkan pada deployment yang menghadap internet.</div>
+
+    <!-- CONFIG -->
+    <h2 id="config"><span class="kicker">Deploy</span>Konfigurasi</h2>
+    <p class="sec-desc">Semua pengaturan lewat environment variable (lihat <code>.env.example</code>). Nilai default aman untuk publik.</p>
+    <div class="tbl-scroll">
+      <table>
+        <thead><tr><th>Variable</th><th>Default</th><th>Keterangan</th></tr></thead>
+        <tbody>
+          <tr><td><code>PORT</code></td><td><code>8080</code></td><td>Port listen</td></tr>
+          <tr><td><code>GIN_MODE</code></td><td><code>release</code></td><td><code>release</code> atau <code>debug</code></td></tr>
+          <tr><td><code>RATE_LIMIT_RPS</code></td><td><code>5</code></td><td>Request/detik per IP</td></tr>
+          <tr><td><code>RATE_LIMIT_BURST</code></td><td><code>10</code></td><td>Jatah burst per IP</td></tr>
+          <tr><td><code>DIAL_TIMEOUT_MS</code></td><td><code>3000</code></td><td>Timeout koneksi jaringan (ms)</td></tr>
+          <tr><td><code>MAX_SCAN_PORTS</code></td><td><code>1024</code></td><td>Batas port per request scan</td></tr>
+          <tr><td><code>SCAN_CONCURRENCY</code></td><td><code>100</code></td><td>Worker paralel untuk scan/enum</td></tr>
+          <tr><td><code>ALLOW_PRIVATE_TARGETS</code></td><td><code>false</code></td><td>Izinkan target private/loopback</td></tr>
+          <tr><td><code>CACHE_ENABLED</code></td><td><code>true</code></td><td>Cache lookup eksternal (TTL)</td></tr>
+          <tr><td><code>AUTH_ENABLED</code></td><td><code>false</code></td><td>Wajibkan API key/JWT pada <code>/api/v1/*</code></td></tr>
+          <tr><td><code>AUTH_API_KEYS</code></td><td><code>—</code></td><td>Daftar API key valid, dipisah koma</td></tr>
+          <tr><td><code>JWT_SECRET</code></td><td><code>—</code></td><td>Secret HMAC untuk tanda tangan JWT</td></tr>
+          <tr><td><code>JWT_TTL_MINUTES</code></td><td><code>60</code></td><td>Masa berlaku token (menit)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ============ RECON ============ -->
+    <h2 id="recon-mod"><span class="kicker">Modul</span>Recon</h2>
+    <p class="sec-desc">Pengumpulan informasi domain & IP: DNS, subdomain, WHOIS, reverse DNS.</p>
+
+    <div class="ep" id="dns">
+      <div class="ep-head"><span class="verb get">GET</span><span class="ep-path">/api/v1/recon/dns</span></div>
+      <p class="ep-desc">Resolusi record DNS umum (A, AAAA, CNAME, MX, NS, TXT) secara paralel.</p>
+      <div class="lbl">Parameter (query)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Nama</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody><tr><td><code>domain</code></td><td><span class="req-yes">wajib</span></td><td>Nama domain, mis. <code>example.com</code></td></tr></tbody></table></div>
+      <div class="lbl">Contoh</div>
+      <div class="grid2">
+        <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl <span class="u">"http://localhost:8080/api/v1\
+/recon/dns?domain=example.com"</span></pre></div>
+        <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: {
+  <span class="k">"domain"</span>: <span class="s">"example.com"</span>,
+  <span class="k">"a"</span>: [<span class="s">"104.20.23.154"</span>],
+  <span class="k">"ns"</span>: [<span class="s">"elliott.ns.cloudflare.com"</span>],
+  <span class="k">"txt"</span>: [<span class="s">"v=spf1 -all"</span>] } }</pre></div>
+      </div>
+    </div>
+
+    <div class="ep" id="subdomain">
+      <div class="ep-head"><span class="verb get">GET</span><span class="ep-path">/api/v1/recon/subdomain</span></div>
+      <p class="ep-desc">Enumerasi subdomain dari dua sumber: <b>brute</b> (wordlist bawaan ~180 nama) dan <b>passive</b> (Certificate Transparency logs via crt.sh). Hasil digabung &amp; dedup, dengan sumber &amp; IP tiap temuan.</p>
+      <div class="lbl">Parameter (query)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Nama</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody>
+          <tr><td><code>domain</code></td><td><span class="req-yes">wajib</span></td><td>Domain induk yang di-enumerasi</td></tr>
+          <tr><td><code>mode</code></td><td><span class="req-no">opsional</span></td><td><code>brute</code> · <code>passive</code> · <code>both</code> (default <code>both</code>)</td></tr>
+        </tbody></table></div>
+      <div class="note">Mode <code>passive</code> menemukan subdomain yang pernah menerima sertifikat TLS — jauh lebih kaya dari wordlist, termasuk nama non-generik. Nama historis yang tak lagi resolve tetap dicantumkan (<code>resolved: false</code>).</div>
+      <div class="lbl">Contoh</div>
+      <div class="grid2">
+        <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl <span class="u">"http://localhost:8080/api/v1\
+/recon/subdomain?domain=github.com\
+&amp;mode=both"</span></pre></div>
+        <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: {
+  <span class="k">"mode"</span>: <span class="s">"both"</span>,
+  <span class="k">"brute_tested"</span>: <span class="n">180</span>, <span class="k">"passive_found"</span>: <span class="n">115</span>,
+  <span class="k">"found"</span>: <span class="n">121</span>,
+  <span class="k">"subdomains"</span>: [
+    { <span class="k">"subdomain"</span>: <span class="s">"api.github.com"</span>,
+      <span class="k">"ips"</span>: [<span class="s">"140.82.112.6"</span>],
+      <span class="k">"sources"</span>: [<span class="s">"brute"</span>, <span class="s">"passive"</span>],
+      <span class="k">"resolved"</span>: <span class="ok">true</span> } ] } }</pre></div>
+      </div>
+    </div>
+
+    <div class="ep" id="whois">
+      <div class="ep-head"><span class="verb get">GET</span><span class="ep-path">/api/v1/recon/whois</span></div>
+      <p class="ep-desc">WHOIS lookup dengan hasil terstruktur (registrar, tanggal, name server, status).</p>
+      <div class="lbl">Parameter (query)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Nama</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody>
+          <tr><td><code>domain</code></td><td><span class="req-yes">wajib</span></td><td>Domain yang dicari</td></tr>
+          <tr><td><code>raw</code></td><td><span class="req-no">opsional</span></td><td><code>true</code> untuk menyertakan record WHOIS mentah</td></tr>
+        </tbody></table></div>
+      <div class="lbl">Contoh</div>
+      <div class="grid2">
+        <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl <span class="u">"http://localhost:8080/api/v1\
+/recon/whois?domain=example.com"</span></pre></div>
+        <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: {
+  <span class="k">"registrar"</span>: <span class="s">"IANA"</span>,
+  <span class="k">"created_date"</span>: <span class="s">"1995-08-14T04:00:00Z"</span>,
+  <span class="k">"expiration_date"</span>: <span class="s">"2026-08-13T..."</span>,
+  <span class="k">"status"</span>: [<span class="s">"clientTransferProhibited"</span>] } }</pre></div>
+      </div>
+    </div>
+
+    <div class="ep" id="reverse-ip">
+      <div class="ep-head"><span class="verb get">GET</span><span class="ep-path">/api/v1/recon/reverse-ip</span></div>
+      <p class="ep-desc">Reverse DNS (PTR) — menemukan hostname yang terdaftar untuk sebuah IP.</p>
+      <div class="lbl">Parameter (query)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Nama</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody><tr><td><code>ip</code></td><td><span class="req-yes">wajib</span></td><td>Alamat IPv4/IPv6. Tunduk pada <a href="#ssrf">SSRF guard</a>.</td></tr></tbody></table></div>
+      <div class="lbl">Contoh</div>
+      <div class="grid2">
+        <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl <span class="u">"http://localhost:8080/api/v1\
+/recon/reverse-ip?ip=8.8.8.8"</span></pre></div>
+        <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: {
+  <span class="k">"ip"</span>: <span class="s">"8.8.8.8"</span>,
+  <span class="k">"hostnames"</span>: [<span class="s">"dns.google"</span>] } }</pre></div>
+      </div>
+    </div>
+
+    <div class="ep" id="email-security">
+      <div class="ep-head"><span class="verb get">GET</span><span class="ep-path">/api/v1/recon/email-security</span></div>
+      <p class="ep-desc">Analisis postur anti-spoofing email: SPF, DMARC, DKIM (probe selector umum), dan DNSSEC. Menghasilkan grade A–F, flag <code>spoofable</code>, dan daftar temuan bertingkat.</p>
+      <div class="lbl">Parameter (query)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Nama</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody>
+          <tr><td><code>domain</code></td><td><span class="req-yes">wajib</span></td><td>Domain yang dianalisis</td></tr>
+          <tr><td><code>selectors</code></td><td><span class="req-no">opsional</span></td><td>Selector DKIM kustom, dipisah koma (mis. <code>20230601,mail</code>). Digabung dengan daftar umum; maks 25.</td></tr>
+        </tbody></table></div>
+      <div class="note">Banyak provider (mis. Google) memakai selector khusus di luar daftar umum. Beri <code>selectors=</code> agar DKIM terdeteksi, mis. <code>selectors=20230601</code>.</div>
+      <div class="lbl">Contoh</div>
+      <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl <span class="u">"http://localhost:8080/api/v1/recon/email-security?domain=google.com&amp;selectors=20230601"</span></pre></div>
+      <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: {
+  <span class="k">"spf"</span>:    { <span class="k">"present"</span>: <span class="ok">true</span>, <span class="k">"all_qualifier"</span>: <span class="s">"~all"</span>, <span class="k">"policy"</span>: <span class="s">"softfail"</span> },
+  <span class="k">"dmarc"</span>:  { <span class="k">"present"</span>: <span class="ok">true</span>, <span class="k">"policy"</span>: <span class="s">"reject"</span> },
+  <span class="k">"dkim"</span>:   { <span class="k">"selectors_found"</span>: [<span class="s">"google"</span>] },
+  <span class="k">"dnssec"</span>: { <span class="k">"enabled"</span>: <span class="bad">false</span> },
+  <span class="k">"grade"</span>: <span class="s">"C"</span>, <span class="k">"spoofable"</span>: <span class="bad">false</span>,
+  <span class="k">"findings"</span>: [
+    { <span class="k">"severity"</span>: <span class="s">"low"</span>, <span class="k">"message"</span>: <span class="s">"SPF hanya soft fail (~all)..."</span> } ] } }</pre></div>
+    </div>
+
+    <div class="ep" id="takeover">
+      <div class="ep-head"><span class="verb get">GET</span><span class="ep-path">/api/v1/recon/takeover</span></div>
+      <p class="ep-desc">Deteksi subdomain takeover: meng-enumerasi subdomain (passive + brute), memeriksa CNAME tiap host terhadap layanan rawan takeover (GitHub Pages, Heroku, S3, Azure, Shopify, Fastly, dll), lalu probe halaman untuk fingerprint "unclaimed". Dangling CNAME (target tak resolve) ditandai <code>potential</code>.</p>
+      <div class="lbl">Parameter (query)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Nama</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody><tr><td><code>domain</code></td><td><span class="req-yes">wajib</span></td><td>Domain induk (maks 400 kandidat diperiksa)</td></tr></tbody></table></div>
+      <div class="lbl">Contoh</div>
+      <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl <span class="u">"http://localhost:8080/api/v1/recon/takeover?domain=example.com"</span></pre></div>
+      <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: {
+  <span class="k">"checked"</span>: <span class="n">7</span>,
+  <span class="k">"vulnerable"</span>: [
+    { <span class="k">"subdomain"</span>: <span class="s">"blog.example.com"</span>, <span class="k">"cname"</span>: <span class="s">"acme.github.io"</span>,
+      <span class="k">"service"</span>: <span class="s">"GitHub Pages"</span>, <span class="k">"status"</span>: <span class="bad">"vulnerable"</span>,
+      <span class="k">"evidence"</span>: <span class="s">"fingerprint matched: There isn't a GitHub Pages site here"</span> } ],
+  <span class="k">"potential"</span>: [],
+  <span class="k">"findings"</span>: [ { <span class="k">"severity"</span>: <span class="s">"high"</span>, <span class="k">"message"</span>: <span class="s">"Subdomain takeover terkonfirmasi..."</span> } ] } }</pre></div>
+    </div>
+
+    <div class="ep" id="profile">
+      <div class="ep-head"><span class="verb get">GET</span><span class="ep-path">/api/v1/recon/profile</span></div>
+      <p class="ep-desc">Profil recon domain agregat — menjalankan DNS, subdomain (passive), WHOIS, email-security, TLS, security-header, dan web-surface secara konkuren, lalu mengembalikan satu laporan plus ringkasan risiko. Tiap seksi degradasi anggun (null) jika gagal.</p>
+      <div class="lbl">Parameter (query)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Nama</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody><tr><td><code>domain</code></td><td><span class="req-yes">wajib</span></td><td>Domain yang diprofilkan</td></tr></tbody></table></div>
+      <div class="lbl">Contoh</div>
+      <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl <span class="u">"http://localhost:8080/api/v1/recon/profile?domain=hackerone.com"</span></pre></div>
+      <div class="code"><div class="code-h"><span>response (ringkas)</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: {
+  <span class="k">"dns"</span>: {...}, <span class="k">"whois"</span>: {...}, <span class="k">"email_security"</span>: {...},
+  <span class="k">"tls"</span>: {...}, <span class="k">"headers"</span>: {...}, <span class="k">"surface"</span>: {...},
+  <span class="k">"subdomains"</span>: { <span class="k">"found"</span>: <span class="n">15</span>, <span class="k">"sample"</span>: [<span class="s">"api.hackerone.com"</span>, ...] },
+  <span class="k">"summary"</span>: {
+    <span class="k">"email_grade"</span>: <span class="s">"A"</span>, <span class="k">"header_grade"</span>: <span class="s">"C"</span>, <span class="k">"spoofable"</span>: <span class="ok">false</span>,
+    <span class="k">"subdomains_found"</span>: <span class="n">15</span>, <span class="k">"tls_days_until_expiry"</span>: <span class="n">88</span>,
+    <span class="k">"issues_by_severity"</span>: { <span class="k">"medium"</span>: <span class="n">1</span>, <span class="k">"low"</span>: <span class="n">3</span> } } } }</pre></div>
+    </div>
+
+    <div class="ep" id="ip">
+      <div class="ep-head"><span class="verb get">GET</span><span class="ep-path">/api/v1/recon/ip</span></div>
+      <p class="ep-desc">GeoIP + ASN untuk sebuah IP: negara, kota, ISP, organisasi, nomor AS, koordinat, dan reverse DNS. Lookup ke penyedia data pihak ketiga (bukan koneksi ke IP target).</p>
+      <div class="lbl">Parameter (query)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Nama</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody><tr><td><code>ip</code></td><td><span class="req-yes">wajib</span></td><td>Alamat IPv4/IPv6</td></tr></tbody></table></div>
+      <div class="lbl">Contoh</div>
+      <div class="grid2">
+        <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl <span class="u">"http://localhost:8080/api/v1\
+/recon/ip?ip=8.8.8.8"</span></pre></div>
+        <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: {
+  <span class="k">"ip"</span>: <span class="s">"8.8.8.8"</span>,
+  <span class="k">"asn"</span>: <span class="s">"AS15169"</span>, <span class="k">"as_name"</span>: <span class="s">"Google LLC"</span>,
+  <span class="k">"country"</span>: <span class="s">"United States"</span>, <span class="k">"city"</span>: <span class="s">"Ashburn"</span>,
+  <span class="k">"reverse"</span>: [<span class="s">"dns.google"</span>] } }</pre></div>
+      </div>
+    </div>
+
+    <div class="ep" id="wayback">
+      <div class="ep-head"><span class="verb get">GET</span><span class="ep-path">/api/v1/recon/wayback</span></div>
+      <p class="ep-desc">URL historis dari Internet Archive (Wayback CDX) untuk domain &amp; subdomainnya — discovery pasif endpoint lama/tersembunyi. Hasil di-dedup.</p>
+      <div class="lbl">Parameter (query)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Nama</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody>
+          <tr><td><code>domain</code></td><td><span class="req-yes">wajib</span></td><td>Domain target</td></tr>
+          <tr><td><code>limit</code></td><td><span class="req-no">opsional</span></td><td>Maks URL (default 1000, cap 5000)</td></tr>
+        </tbody></table></div>
+      <div class="note">CDX Internet Archive kerap lambat (bisa 10–40 dtk). Endpoint diberi ceiling waktu 45 dtk.</div>
+      <div class="lbl">Contoh</div>
+      <div class="grid2">
+        <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl <span class="u">"http://localhost:8080/api/v1\
+/recon/wayback?domain=example.com&amp;limit=500"</span></pre></div>
+        <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: {
+  <span class="k">"domain"</span>: <span class="s">"example.com"</span>, <span class="k">"count"</span>: <span class="n">137</span>,
+  <span class="k">"urls"</span>: [<span class="s">"http://example.com/"</span>,
+           <span class="s">"http://example.com/admin"</span>, ...] } }</pre></div>
+      </div>
+    </div>
+
+    <!-- ============ SCAN ============ -->
+    <h2 id="scan-mod"><span class="kicker">Modul</span>Scan</h2>
+    <p class="sec-desc">Pemindaian TCP dan pengambilan banner service. Tunduk pada SSRF guard dan batas <code>MAX_SCAN_PORTS</code>.</p>
+
+    <div class="ep" id="ports">
+      <div class="ep-head"><span class="verb post">POST</span><span class="ep-path">/api/v1/scan/ports</span></div>
+      <p class="ep-desc">Port scan TCP konkuren. Bila <code>ports</code> kosong, memindai daftar port umum. Opsional mengambil banner service pada port terbuka.</p>
+      <div class="lbl">Body (JSON)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Field</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody>
+          <tr><td><code>host</code></td><td><span class="req-yes">wajib</span></td><td>Domain atau IP target</td></tr>
+          <tr><td><code>ports</code></td><td><span class="req-no">opsional</span></td><td>Spec port, mis. <code>"22,80,443,8000-8100"</code>. Default: port umum</td></tr>
+          <tr><td><code>banner</code></td><td><span class="req-no">opsional</span></td><td><code>true</code> untuk banner grabbing</td></tr>
+        </tbody></table></div>
+      <div class="lbl">Contoh</div>
+      <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl -X <span class="f">POST</span> <span class="u">http://localhost:8080/api/v1/scan/ports</span> \
+     -H <span class="u">'Content-Type: application/json'</span> \
+     -d <span class="u">'{"host":"scanme.nmap.org","ports":"22,80,443","banner":true}'</span></pre></div>
+      <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: {
+  <span class="k">"host"</span>: <span class="s">"scanme.nmap.org"</span>, <span class="k">"scanned"</span>: <span class="n">3</span>, <span class="k">"open_count"</span>: <span class="n">2</span>,
+  <span class="k">"ports"</span>: [
+    { <span class="k">"port"</span>: <span class="n">22</span>, <span class="ok">"open": true</span>, <span class="k">"service"</span>: <span class="s">"ssh"</span>,
+      <span class="k">"banner"</span>: <span class="s">"SSH-2.0-OpenSSH_6.6.1p1 Ubuntu"</span> },
+    { <span class="k">"port"</span>: <span class="n">80</span>, <span class="ok">"open": true</span>, <span class="k">"service"</span>: <span class="s">"http"</span> },
+    { <span class="k">"port"</span>: <span class="n">443</span>, <span class="k">"open"</span>: <span class="bad">false</span> } ],
+  <span class="k">"elapsed"</span>: <span class="s">"495ms"</span> } }</pre></div>
+    </div>
+
+    <div class="ep" id="banner">
+      <div class="ep-head"><span class="verb get">GET</span><span class="ep-path">/api/v1/scan/banner</span></div>
+      <p class="ep-desc">Ambil banner dari satu host:port. Pintasan dari <code>scan/ports</code> untuk satu port dengan banner aktif.</p>
+      <div class="lbl">Parameter (query)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Nama</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody>
+          <tr><td><code>host</code></td><td><span class="req-yes">wajib</span></td><td>Domain atau IP</td></tr>
+          <tr><td><code>port</code></td><td><span class="req-yes">wajib</span></td><td>Satu nomor port (1–65535)</td></tr>
+        </tbody></table></div>
+      <div class="lbl">Contoh</div>
+      <div class="grid2">
+        <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl <span class="u">"http://localhost:8080/api/v1\
+/scan/banner?host=scanme.nmap.org&amp;port=22"</span></pre></div>
+        <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: { <span class="k">"ports"</span>: [
+  { <span class="k">"port"</span>: <span class="n">22</span>, <span class="ok">"open": true</span>,
+    <span class="k">"banner"</span>: <span class="s">"SSH-2.0-OpenSSH_6.6.1p1"</span> } ] } }</pre></div>
+      </div>
+    </div>
+
+    <!-- ============ WEB ============ -->
+    <h2 id="web-mod"><span class="kicker">Modul</span>Web</h2>
+    <p class="sec-desc">Analisis permukaan web: security header, fingerprint teknologi, dan sertifikat TLS.</p>
+
+    <div class="ep" id="headers">
+      <div class="ep-head"><span class="verb get">GET</span><span class="ep-path">/api/v1/web/headers</span></div>
+      <p class="ep-desc">Audit 7 security header utama dan beri grade A–F berdasarkan cakupannya.</p>
+      <div class="lbl">Parameter (query)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Nama</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody><tr><td><code>url</code></td><td><span class="req-yes">wajib</span></td><td>URL target. Skema opsional (default <code>https://</code>)</td></tr></tbody></table></div>
+      <div class="lbl">Contoh</div>
+      <div class="grid2">
+        <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl <span class="u">"http://localhost:8080/api/v1\
+/web/headers?url=https://example.com"</span></pre></div>
+        <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: {
+  <span class="k">"status_code"</span>: <span class="n">200</span>, <span class="k">"grade"</span>: <span class="s">"F"</span>,
+  <span class="k">"server"</span>: <span class="s">"cloudflare"</span>,
+  <span class="k">"present"</span>: {},
+  <span class="k">"missing"</span>: [<span class="s">"Content-Security-Policy"</span>, ...] } }</pre></div>
+      </div>
+    </div>
+
+    <div class="ep" id="tech">
+      <div class="ep-head"><span class="verb get">GET</span><span class="ep-path">/api/v1/web/tech</span></div>
+      <p class="ep-desc">Fingerprint teknologi (CMS, framework, CDN, bahasa) dari header dan body respons.</p>
+      <div class="lbl">Parameter (query)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Nama</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody><tr><td><code>url</code></td><td><span class="req-yes">wajib</span></td><td>URL target</td></tr></tbody></table></div>
+      <div class="lbl">Contoh</div>
+      <div class="grid2">
+        <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl <span class="u">"http://localhost:8080/api/v1\
+/web/tech?url=https://wordpress.org"</span></pre></div>
+        <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: {
+  <span class="k">"title"</span>: <span class="s">"Blog Tool, ... | WordPress.org"</span>,
+  <span class="k">"server"</span>: <span class="s">"nginx"</span>,
+  <span class="k">"technologies"</span>: [<span class="s">"Nginx"</span>, <span class="s">"WordPress"</span>] } }</pre></div>
+      </div>
+    </div>
+
+    <div class="ep" id="tls">
+      <div class="ep-head"><span class="verb get">GET</span><span class="ep-path">/api/v1/web/tls</span></div>
+      <p class="ep-desc">Inspeksi sertifikat TLS: versi, cipher, issuer, SAN, dan sisa masa berlaku.</p>
+      <div class="lbl">Parameter (query)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Nama</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody>
+          <tr><td><code>host</code></td><td><span class="req-yes">wajib</span></td><td>Hostname target</td></tr>
+          <tr><td><code>port</code></td><td><span class="req-no">opsional</span></td><td>Default <code>443</code></td></tr>
+        </tbody></table></div>
+      <div class="lbl">Contoh</div>
+      <div class="grid2">
+        <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl <span class="u">"http://localhost:8080/api/v1\
+/web/tls?host=github.com&amp;port=443"</span></pre></div>
+        <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: {
+  <span class="k">"version"</span>: <span class="s">"TLS 1.3"</span>,
+  <span class="k">"cipher_suite"</span>: <span class="s">"TLS_AES_128_GCM_SHA256"</span>,
+  <span class="k">"issuer"</span>: <span class="s">"Sectigo ... E36"</span>,
+  <span class="k">"days_until_expiry"</span>: <span class="n">60</span>, <span class="ok">"expired": false</span> } }</pre></div>
+      </div>
+    </div>
+
+    <div class="ep" id="surface">
+      <div class="ep-head"><span class="verb get">GET</span><span class="ep-path">/api/v1/web/surface</span></div>
+      <p class="ep-desc">Pemetaan permukaan web dalam satu panggilan: <code>robots.txt</code> (path Disallow &amp; sitemap), <code>sitemap.xml</code> (jumlah URL), <code>security.txt</code>, metode HTTP yang diizinkan (via OPTIONS), dan cek <b>CORS misconfiguration</b>.</p>
+      <div class="lbl">Parameter (query)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Nama</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody><tr><td><code>url</code></td><td><span class="req-yes">wajib</span></td><td>URL target. Tunduk pada <a href="#ssrf">SSRF guard</a>.</td></tr></tbody></table></div>
+      <div class="lbl">Contoh</div>
+      <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl <span class="u">"http://localhost:8080/api/v1/web/surface?url=https://github.com"</span></pre></div>
+      <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: {
+  <span class="k">"robots"</span>:       { <span class="k">"present"</span>: <span class="ok">true</span>, <span class="k">"disallow"</span>: [<span class="s">"/*/pulse"</span>, ...] },
+  <span class="k">"sitemap"</span>:      { <span class="k">"present"</span>: <span class="bad">false</span>, <span class="k">"url_count"</span>: <span class="n">0</span> },
+  <span class="k">"security_txt"</span>: { <span class="k">"present"</span>: <span class="ok">true</span>, <span class="k">"location"</span>: <span class="s">"/.well-known/security.txt"</span> },
+  <span class="k">"methods"</span>:      { <span class="k">"allowed"</span>: [<span class="s">"GET"</span>], <span class="k">"dangerous"</span>: [] },
+  <span class="k">"cors"</span>:         { <span class="k">"misconfigured"</span>: <span class="bad">false</span> },
+  <span class="k">"findings"</span>: [
+    { <span class="k">"severity"</span>: <span class="s">"info"</span>, <span class="k">"message"</span>: <span class="s">"robots.txt mengungkap path Disallow..."</span> } ] } }</pre></div>
+    </div>
+
+    <div class="ep" id="probe">
+      <div class="ep-head"><span class="verb post">POST</span><span class="ep-path">/api/v1/web/probe</span></div>
+      <p class="ep-desc">Probe massal daftar host (gaya httpx): status, judul, server, teknologi, dan <b>favicon hash mmh3</b> kompatibel Shodan untuk korelasi aset. Konkuren, maks 100 host, tunduk SSRF guard.</p>
+      <div class="lbl">Body (JSON)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Field</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody><tr><td><code>hosts</code></td><td><span class="req-yes">wajib</span></td><td>Array host/URL (maks 100)</td></tr></tbody></table></div>
+      <div class="lbl">Contoh</div>
+      <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl -X <span class="f">POST</span> <span class="u">http://localhost:8080/api/v1/web/probe</span> \
+     -H <span class="u">'Content-Type: application/json'</span> \
+     -d <span class="u">'{"hosts":["github.com","wordpress.org"]}'</span></pre></div>
+      <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: {
+  <span class="k">"probed"</span>: <span class="n">2</span>, <span class="k">"alive_count"</span>: <span class="n">2</span>,
+  <span class="k">"results"</span>: [
+    { <span class="k">"input"</span>: <span class="s">"github.com"</span>, <span class="ok">"alive": true</span>, <span class="k">"status_code"</span>: <span class="n">200</span>,
+      <span class="k">"title"</span>: <span class="s">"GitHub..."</span>, <span class="k">"favicon_hash"</span>: <span class="n">784597167</span> },
+    { <span class="k">"input"</span>: <span class="s">"wordpress.org"</span>, <span class="ok">"alive": true</span>,
+      <span class="k">"technologies"</span>: [<span class="s">"Nginx"</span>, <span class="s">"WordPress"</span>],
+      <span class="k">"favicon_hash"</span>: <span class="n">-2133341160</span> } ] } }</pre></div>
+    </div>
+
+    <!-- ============ UTIL ============ -->
+    <h2 id="util-mod"><span class="kicker">Modul</span>Util</h2>
+    <p class="sec-desc">Utilitas kripto/encoding offline — tidak menyentuh jaringan.</p>
+
+    <div class="ep" id="hash">
+      <div class="ep-head"><span class="verb post">POST</span><span class="ep-path">/api/v1/util/hash</span></div>
+      <p class="ep-desc">Hitung digest hash. Tanpa <code>algo</code> (atau <code>"all"</code>), mengembalikan semua algoritma sekaligus.</p>
+      <div class="lbl">Body (JSON)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Field</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody>
+          <tr><td><code>text</code></td><td><span class="req-yes">wajib</span></td><td>Teks yang di-hash</td></tr>
+          <tr><td><code>algo</code></td><td><span class="req-no">opsional</span></td><td><code>md5</code> · <code>sha1</code> · <code>sha256</code> · <code>sha512</code> · <code>crc32</code> · <code>all</code></td></tr>
+        </tbody></table></div>
+      <div class="lbl">Contoh</div>
+      <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl -X <span class="f">POST</span> <span class="u">http://localhost:8080/api/v1/util/hash</span> \
+     -H <span class="u">'Content-Type: application/json'</span> -d <span class="u">'{"text":"hello","algo":"sha256"}'</span></pre></div>
+      <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: { <span class="k">"text"</span>: <span class="s">"hello"</span>, <span class="k">"algo"</span>: <span class="s">"sha256"</span>,
+           <span class="k">"hash"</span>: <span class="s">"2cf24dba5fb0a30e26e83b2ac5b9e29e..."</span> } }</pre></div>
+    </div>
+
+    <div class="ep" id="hash-identify">
+      <div class="ep-head"><span class="verb post">POST</span><span class="ep-path">/api/v1/util/hash-identify</span></div>
+      <p class="ep-desc">Tebak kemungkinan algoritma dari bentuk/panjang hash (termasuk format berprefiks seperti bcrypt & Argon2).</p>
+      <div class="lbl">Body (JSON)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Field</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody><tr><td><code>hash</code></td><td><span class="req-yes">wajib</span></td><td>Hash yang diidentifikasi</td></tr></tbody></table></div>
+      <div class="lbl">Contoh</div>
+      <div class="grid2">
+        <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl -X <span class="f">POST</span> <span class="u">.../util/hash-identify</span> \
+  -d <span class="u">'{"hash":"5d41402abc4b2a76b9719d911017c592"}'</span></pre></div>
+        <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: {
+  <span class="k">"hash"</span>: <span class="s">"5d41402abc..."</span>,
+  <span class="k">"possible_types"</span>: [<span class="s">"MD5 / NTLM / MD4"</span>] } }</pre></div>
+      </div>
+    </div>
+
+    <div class="ep" id="encode">
+      <div class="ep-head"><span class="verb post">POST</span><span class="ep-path">/api/v1/util/encode</span></div>
+      <p class="ep-desc">Encode atau decode teks dengan skema umum yang dipakai saat exploit/CTF.</p>
+      <div class="lbl">Body (JSON)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Field</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody>
+          <tr><td><code>action</code></td><td><span class="req-yes">wajib</span></td><td><code>encode</code> atau <code>decode</code></td></tr>
+          <tr><td><code>scheme</code></td><td><span class="req-yes">wajib</span></td><td><code>base64</code> · <code>base64url</code> · <code>base32</code> · <code>hex</code> · <code>url</code></td></tr>
+          <tr><td><code>text</code></td><td><span class="req-yes">wajib</span></td><td>Input</td></tr>
+        </tbody></table></div>
+      <div class="lbl">Contoh</div>
+      <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl -X <span class="f">POST</span> <span class="u">http://localhost:8080/api/v1/util/encode</span> \
+     -d <span class="u">'{"action":"encode","scheme":"base64","text":"admin:admin"}'</span></pre></div>
+      <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: { <span class="k">"action"</span>: <span class="s">"encode"</span>, <span class="k">"scheme"</span>: <span class="s">"base64"</span>,
+           <span class="k">"result"</span>: <span class="s">"YWRtaW46YWRtaW4="</span> } }</pre></div>
+    </div>
+
+    <div class="ep" id="jwt-decode">
+      <div class="ep-head"><span class="verb post">POST</span><span class="ep-path">/api/v1/util/jwt-decode</span></div>
+      <p class="ep-desc">Bongkar header &amp; payload JWT untuk inspeksi. <b>Tidak</b> memverifikasi tanda tangan.</p>
+      <div class="lbl">Body (JSON)</div>
+      <div class="tbl-scroll"><table><thead><tr><th>Field</th><th>Wajib</th><th>Keterangan</th></tr></thead>
+        <tbody><tr><td><code>token</code></td><td><span class="req-yes">wajib</span></td><td>JWT (prefix <code>Bearer </code> otomatis dibuang)</td></tr></tbody></table></div>
+      <div class="lbl">Contoh</div>
+      <div class="code"><div class="code-h"><span>request</span><span>curl</span></div>
+<pre><span class="p">$</span> curl -X <span class="f">POST</span> <span class="u">http://localhost:8080/api/v1/util/jwt-decode</span> \
+     -d <span class="u">'{"token":"eyJhbGciOiJIUzI1Ni...eyJzdWIiOiIxMjM0..."}'</span></pre></div>
+      <div class="code"><div class="code-h"><span>response</span><span>200</span></div>
+<pre>{ <span class="k">"data"</span>: {
+  <span class="k">"header"</span>:  { <span class="k">"alg"</span>: <span class="s">"HS256"</span>, <span class="k">"typ"</span>: <span class="s">"JWT"</span> },
+  <span class="k">"payload"</span>: { <span class="k">"sub"</span>: <span class="s">"1234567890"</span>, <span class="k">"name"</span>: <span class="s">"John Doe"</span> },
+  <span class="k">"algorithm"</span>: <span class="s">"HS256"</span>,
+  <span class="k">"note"</span>: <span class="s">"Signature is NOT verified..."</span> } }</pre></div>
+    </div>
+
+    <div class="note" style="margin-top:40px">Butuh ringkasan cepat? Lihat <a href="/#endpoints">tabel endpoint</a> di beranda, atau ambil katalog machine-readable di <code>GET /api</code>.</div>
+  </main>
+</div>
+
+<footer>
+  <div class="foot">
+    <a class="brand" href="/"><span class="dot"></span><b>PubAPI</b>&nbsp;<span>//</span>&nbsp;<b>OffSec</b></a>
+    <p>Go 1.26 · Gin · untuk riset keamanan &amp; edukasi</p>
+  </div>
+</footer>
