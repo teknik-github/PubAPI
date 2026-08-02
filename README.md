@@ -24,7 +24,11 @@ A public HTTP API for **offensive-security reconnaissance and utilities**, writt
 | | `GET /api/v1/web/tls` | Inspect TLS certificate & cipher |
 | | `GET /api/v1/web/surface` | robots/sitemap/security.txt, HTTP methods, CORS check |
 | | `POST /api/v1/web/probe` | Batch host liveness + favicon hash (Shodan-compatible mmh3) |
-| **Auth** | `POST /api/v1/auth/token` | Exchange an API key for a JWT (when auth is enabled) |
+| **Accounts** | `POST /api/v1/auth/register` · `/auth/login` | Sign up / log in → session JWT |
+| | `GET /api/v1/account` | Current user (JWT) |
+| | `POST/GET /api/v1/keys` · `DELETE /keys/:id` | Client-managed API keys (JWT) |
+| **Admin** | `GET /api/v1/admin/users` · `/logs` · `/stats` | Users, request logs, usage stats (admin) |
+| **Web UI** | `GET /dashboard` · `GET /tos` | Account/admin dashboard · Terms of Service |
 | **Util** | `POST /api/v1/util/hash` | Compute MD5/SHA1/SHA256/SHA512/CRC32 |
 | | `POST /api/v1/util/hash-identify` | Guess a hash's algorithm from its shape |
 | | `POST /api/v1/util/encode` | Encode/decode base64, base64url, base32, hex, url |
@@ -69,10 +73,12 @@ All settings are environment variables (see `.env.example`). Defaults are safe f
 | `SCAN_CONCURRENCY` | `100` | Parallel workers for scans |
 | `ALLOW_PRIVATE_TARGETS` | `false` | Allow private/loopback/link-local targets |
 | `CACHE_ENABLED` | `true` | Cache slow external lookups (per-type TTL) |
-| `AUTH_ENABLED` | `false` | Require API key / JWT on `/api/v1/*` |
-| `AUTH_API_KEYS` | — | Comma-separated valid API keys |
-| `JWT_SECRET` | — | HMAC secret for signing JWTs |
-| `JWT_TTL_MINUTES` | `60` | Issued-token lifetime |
+| `DB_PATH` | `pubapi.db` | SQLite file (accounts, keys, request logs) |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | — | Bootstrap admin account, created on first run |
+| `AUTH_ENABLED` | `false` | Require API key / JWT on the recon/scan API surface |
+| `JWT_SECRET` | — | HMAC secret for signing session JWTs |
+| `JWT_TTL_MINUTES` | `60` | Session-token lifetime |
+| `AUTH_RATE_RPS` / `AUTH_RATE_BURST` | `0.1` / `5` | Stricter per-IP limit on login/register |
 
 **`ALLOW_PRIVATE_TARGETS`** defaults to `false`: by design the API refuses to reach private, loopback, link-local, or cloud-metadata (`169.254.169.254`) addresses. This prevents a public, unauthenticated endpoint from being abused to scan your internal network (SSRF). Enable it only for isolated, authorized internal testing.
 
@@ -184,38 +190,37 @@ curl -X POST http://localhost:8080/api/v1/util/jwt-decode \
 └── .env.example
 ```
 
-## Authentication (optional)
+## Accounts, API keys & admin
 
-Auth is **off by default** — endpoints are open, protected by per-IP rate limiting. Enable it to require credentials on every `/api/v1/*` endpoint:
+Accounts, API keys, and request logs are persisted in **SQLite** (`DB_PATH`). Manage everything from the **dashboard** at `/dashboard`; Terms of Service at `/tos`.
 
-```bash
-AUTH_ENABLED=true \
-AUTH_API_KEYS="secret-key-123,another-key" \
-JWT_SECRET="a-long-random-secret" \
-JWT_TTL_MINUTES=60 \
-go run .
-```
-
-Public routes (`/`, `/docs`, `/api`, `/health`, `POST /api/v1/auth/token`) stay open. Authenticate a request in either of two ways:
+**Flow:** register/login → session JWT → create an API key → call the API with the key.
 
 ```bash
-# 1) API key directly
-curl "http://localhost:8080/api/v1/recon/dns?domain=example.com" \
-  -H "X-API-Key: secret-key-123"
+# create the first admin (once)
+ADMIN_EMAIL=admin@you.com ADMIN_PASSWORD=change-me AUTH_ENABLED=true JWT_SECRET=long-secret go run .
 
-# 2) Exchange the API key for a short-lived JWT, then use it as a Bearer token
-TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/token \
-  -d '{"api_key":"secret-key-123"}' | jq -r .data.token)
+# a client registers and logs in → session JWT
+JWT=$(curl -s -X POST localhost:8080/api/v1/auth/register \
+  -d '{"email":"me@corp.com","password":"secret123","accept_tos":true}' | jq -r .data.token)
 
-curl "http://localhost:8080/api/v1/recon/dns?domain=example.com" \
-  -H "Authorization: Bearer $TOKEN"
+# create an API key (shown once)
+KEY=$(curl -s -X POST localhost:8080/api/v1/keys -H "Authorization: Bearer $JWT" \
+  -d '{"name":"laptop"}' | jq -r .data.key)
+
+# call the API with the key
+curl "localhost:8080/api/v1/recon/dns?domain=example.com" -H "X-API-Key: $KEY"
 ```
 
-Missing or invalid credentials return `401 unauthorized`.
+- **Passwords** hashed with bcrypt; **API keys** stored as SHA-256 hashes (plaintext shown once).
+- **Sessions** are HS256 JWTs (`JWT_SECRET`, `JWT_TTL_MINUTES`); `login`/`register` carry a stricter rate limit to blunt brute-force.
+- **Admin** (`ADMIN_EMAIL`) can view users, request logs, and usage stats via `/api/v1/admin/*` and the dashboard — so you can see who is using the API.
+- **Request logging:** every `/api/v1/*` call is recorded (time, method, path, status, IP, principal, latency).
+- `AUTH_ENABLED` controls only whether the recon/scan API requires a key; accounts/dashboard/logging work regardless.
 
 ## Security & safety notes
 
-- **Optional auth** (API key + JWT, above); off by default with per-IP rate limiting. Enable auth or put it behind an API gateway before exposing it broadly.
+- **Accounts + API keys + optional enforcement** (above); with `AUTH_ENABLED=false` the recon API is open but all usage is still logged. Enable auth or put it behind a gateway before exposing broadly.
 - SSRF guard blocks non-public targets by default (`ALLOW_PRIVATE_TARGETS`).
 - Input validation on every domain/host/URL/IP parameter.
 - Port count, response body size, and banner length are all capped.

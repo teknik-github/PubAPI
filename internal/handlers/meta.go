@@ -35,6 +35,16 @@ func (h *Handler) Docs(c *gin.Context) {
 	h.serveHTML(c, "web/docs.html")
 }
 
+// Dashboard handles GET /dashboard and serves the account/admin dashboard.
+func (h *Handler) Dashboard(c *gin.Context) {
+	h.serveHTML(c, "web/dashboard.html")
+}
+
+// TOS handles GET /tos and serves the Terms of Service page.
+func (h *Handler) TOS(c *gin.Context) {
+	h.serveHTML(c, "web/tos.html")
+}
+
 // serveHTML writes an embedded HTML asset with the correct content type.
 func (h *Handler) serveHTML(c *gin.Context, name string) {
 	b, err := fs.ReadFile(h.web, name)
@@ -53,13 +63,24 @@ func (h *Handler) Catalog(c *gin.Context) {
 		"description": "Public API for offensive-security reconnaissance and utilities.",
 		"disclaimer":  "For authorized security testing and research only. You are responsible for how you use it.",
 		"auth": gin.H{
-			"enabled":     h.cfg.AuthEnabled,
-			"token_route": "POST /api/v1/auth/token",
-			"how":         "Send X-API-Key or Authorization: Bearer <api-key|jwt>. Exchange an API key for a JWT at the token route.",
+			"api_auth_enabled": h.cfg.AuthEnabled,
+			"how":              "Register/login for a session JWT, create an API key in the dashboard, then send X-API-Key or Authorization: Bearer <api-key|jwt> on API calls.",
+			"dashboard":        "GET /dashboard",
+			"terms":            "GET /tos",
 		},
 		"endpoints": gin.H{
-			"auth": []gin.H{
-				{"method": "POST", "path": "/api/v1/auth/token", "body": "{api_key}"},
+			"account": []gin.H{
+				{"method": "POST", "path": "/api/v1/auth/register", "body": "{email, password, accept_tos}"},
+				{"method": "POST", "path": "/api/v1/auth/login", "body": "{email, password}"},
+				{"method": "GET", "path": "/api/v1/account", "auth": "jwt"},
+				{"method": "POST", "path": "/api/v1/keys", "auth": "jwt", "body": "{name}"},
+				{"method": "GET", "path": "/api/v1/keys", "auth": "jwt"},
+				{"method": "DELETE", "path": "/api/v1/keys/:id", "auth": "jwt"},
+			},
+			"admin": []gin.H{
+				{"method": "GET", "path": "/api/v1/admin/users", "auth": "admin"},
+				{"method": "GET", "path": "/api/v1/admin/logs", "auth": "admin"},
+				{"method": "GET", "path": "/api/v1/admin/stats", "auth": "admin"},
 			},
 			"recon": []gin.H{
 				{"method": "GET", "path": "/api/v1/recon/dns", "params": "domain"},

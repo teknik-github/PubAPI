@@ -1,117 +1,182 @@
-// Package auth provides optional API-key and JWT authentication.
+// Package auth handles password hashing, JWT sessions, and API-key credentials
+// backed by the persistent store.
 package auth
 
 import (
 	"crypto/rand"
-	"crypto/subtle"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
+
+	"pubapi/internal/store"
 )
 
-// Authenticator validates API keys and issues/verifies JWTs.
-type Authenticator struct {
-	enabled bool
-	keys    []string
+// Errors surfaced to callers.
+var (
+	ErrUnauthorized = errors.New("unauthorized")
+	ErrBadKey       = errors.New("invalid api key")
+)
+
+// keyPrefix marks PubAPI-issued API keys.
+const keyPrefix = "pk_"
+
+// Service provides authentication backed by the store.
+type Service struct {
+	store   *store.Store
 	secret  []byte
-	ttl     time.Duration
+	jwtTTL  time.Duration
+	enabled bool // whether the recon/scan API requires a credential
 }
 
-// ErrUnauthorized is returned when a request carries no valid credential.
-var ErrUnauthorized = errors.New("unauthorized")
-
-// New builds an Authenticator. When auth is enabled but no JWT secret is set,
-// a random ephemeral secret is generated (tokens won't survive a restart).
-func New(enabled bool, keys []string, secret string, ttl time.Duration) *Authenticator {
-	a := &Authenticator{enabled: enabled, keys: keys, ttl: ttl}
-	if !enabled {
-		return a
-	}
+// NewService builds the auth service. When apiAuth is enabled but no JWT secret
+// is provided, a random ephemeral secret is generated.
+func NewService(st *store.Store, secret string, ttl time.Duration, apiAuth bool) *Service {
 	if secret == "" {
 		buf := make([]byte, 32)
 		_, _ = rand.Read(buf)
 		secret = hex.EncodeToString(buf)
-		log.Println("auth: JWT_SECRET not set — using a random ephemeral secret (tokens reset on restart)")
+		log.Println("auth: JWT_SECRET not set — using a random ephemeral secret (sessions reset on restart)")
 	}
-	a.secret = []byte(secret)
 	if ttl <= 0 {
-		a.ttl = time.Hour
+		ttl = time.Hour
 	}
-	if len(keys) == 0 {
-		log.Println("auth: AUTH_ENABLED but no AUTH_API_KEYS configured — the token endpoint cannot mint tokens")
-	}
-	return a
+	return &Service{store: st, secret: []byte(secret), jwtTTL: ttl, enabled: apiAuth}
 }
 
-// Enabled reports whether authentication is active.
-func (a *Authenticator) Enabled() bool { return a.enabled }
+// APIAuthEnabled reports whether recon/scan endpoints require a credential.
+func (s *Service) APIAuthEnabled() bool { return s.enabled }
 
-// TTL is the lifetime of issued tokens.
-func (a *Authenticator) TTL() time.Duration { return a.ttl }
+// ---- Passwords ----
 
-// ValidKey reports whether key matches a configured API key (constant-time).
-func (a *Authenticator) ValidKey(key string) bool {
-	if key == "" {
-		return false
-	}
-	for _, k := range a.keys {
-		if subtle.ConstantTimeCompare([]byte(k), []byte(key)) == 1 {
-			return true
-		}
-	}
-	return false
+// HashPassword returns a bcrypt hash of the password.
+func HashPassword(pw string) (string, error) {
+	b, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+	return string(b), err
 }
 
-// Issue mints a signed JWT for the given subject.
-func (a *Authenticator) Issue(subject string) (string, time.Time, error) {
-	exp := time.Now().Add(a.ttl)
-	claims := jwt.RegisteredClaims{
-		Subject:   subject,
-		Issuer:    "pubapi",
-		IssuedAt:  jwt.NewNumericDate(time.Now()),
-		ExpiresAt: jwt.NewNumericDate(exp),
+// CheckPassword reports whether pw matches the stored hash.
+func CheckPassword(hash, pw string) bool {
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(pw)) == nil
+}
+
+// ---- JWT sessions ----
+
+// Claims is the JWT payload for a logged-in dashboard user.
+type Claims struct {
+	jwt.RegisteredClaims
+	Role  string `json:"role"`
+	Email string `json:"email"`
+}
+
+// IssueJWT signs a session token for a user.
+func (s *Service) IssueJWT(u *store.User) (string, time.Time, error) {
+	exp := time.Now().Add(s.jwtTTL)
+	claims := Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   strconv.FormatInt(u.ID, 10),
+			Issuer:    "pubapi",
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(exp),
+		},
+		Role:  u.Role,
+		Email: u.Email,
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := tok.SignedString(a.secret)
+	signed, err := tok.SignedString(s.secret)
 	return signed, exp, err
 }
 
-// VerifyToken validates a JWT and returns its subject.
-func (a *Authenticator) VerifyToken(tokenStr string) (string, error) {
-	claims := &jwt.RegisteredClaims{}
+// TTLSeconds is the session lifetime in seconds.
+func (s *Service) TTLSeconds() int { return int(s.jwtTTL.Seconds()) }
+
+// VerifyJWT validates a session token and returns its claims.
+func (s *Service) VerifyJWT(tokenStr string) (*Claims, error) {
+	claims := &Claims{}
 	_, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("unexpected signing method")
 		}
-		return a.secret, nil
+		return s.secret, nil
 	})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return claims.Subject, nil
+	return claims, nil
 }
 
-// Authenticate inspects a request for a valid credential and returns the
-// principal it authenticated as. Order: X-API-Key, then Authorization: Bearer
-// (tried as an API key, then as a JWT).
-func (a *Authenticator) Authenticate(r *http.Request) (string, error) {
-	if k := strings.TrimSpace(r.Header.Get("X-API-Key")); k != "" && a.ValidKey(k) {
-		return "apikey", nil
+// ---- API keys ----
+
+// hashKey returns the storage hash for an API key's plaintext.
+func hashKey(plaintext string) string {
+	sum := sha256.Sum256([]byte(plaintext))
+	return hex.EncodeToString(sum[:])
+}
+
+// GenerateAPIKey mints a new key, returning its plaintext (shown once), a
+// display prefix, and the hash to persist.
+func GenerateAPIKey() (plaintext, prefix, keyHash string) {
+	buf := make([]byte, 24)
+	_, _ = rand.Read(buf)
+	plaintext = keyPrefix + hex.EncodeToString(buf)
+	prefix = plaintext[:len(keyPrefix)+6] // e.g. "pk_ab12cd"
+	keyHash = hashKey(plaintext)
+	return
+}
+
+// ResolveKey validates an API key's plaintext against the store and records use.
+func (s *Service) ResolveKey(plaintext string) (*store.APIKeyOwner, error) {
+	if !strings.HasPrefix(plaintext, keyPrefix) {
+		return nil, ErrBadKey
+	}
+	owner, err := s.store.ResolveAPIKey(hashKey(plaintext))
+	if err != nil {
+		return nil, ErrBadKey
+	}
+	s.store.TouchAPIKey(owner.KeyID)
+	return owner, nil
+}
+
+// ---- Request authentication for the API surface ----
+
+// AuthenticateAPI resolves a request's credential (X-API-Key or Bearer) to a
+// principal string used for logging and access control.
+func (s *Service) AuthenticateAPI(r *http.Request) (string, error) {
+	if k := strings.TrimSpace(r.Header.Get("X-API-Key")); k != "" {
+		if owner, err := s.ResolveKey(k); err == nil {
+			return "key:" + strconv.FormatInt(owner.KeyID, 10), nil
+		}
 	}
 	authz := strings.TrimSpace(r.Header.Get("Authorization"))
 	if strings.HasPrefix(authz, "Bearer ") {
 		cred := strings.TrimSpace(strings.TrimPrefix(authz, "Bearer "))
-		if a.ValidKey(cred) {
-			return "apikey", nil
-		}
-		if sub, err := a.VerifyToken(cred); err == nil {
-			return sub, nil
+		if strings.HasPrefix(cred, keyPrefix) {
+			if owner, err := s.ResolveKey(cred); err == nil {
+				return "key:" + strconv.FormatInt(owner.KeyID, 10), nil
+			}
+		} else if claims, err := s.VerifyJWT(cred); err == nil {
+			return "user:" + claims.Subject, nil
 		}
 	}
 	return "", ErrUnauthorized
+}
+
+// UserFromRequest resolves a Bearer JWT to its claims (dashboard endpoints).
+func (s *Service) UserFromRequest(r *http.Request) (*Claims, error) {
+	authz := strings.TrimSpace(r.Header.Get("Authorization"))
+	if !strings.HasPrefix(authz, "Bearer ") {
+		return nil, ErrUnauthorized
+	}
+	claims, err := s.VerifyJWT(strings.TrimSpace(strings.TrimPrefix(authz, "Bearer ")))
+	if err != nil {
+		return nil, ErrUnauthorized
+	}
+	return claims, nil
 }

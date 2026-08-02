@@ -1,5 +1,6 @@
 <title>Dokumentasi — PubAPI OffSec</title>
 <meta name="description" content="Dokumentasi lengkap PubAPI OffSec: cara pakai setiap endpoint recon, scan, web, dan util — parameter, contoh request, dan respons." />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a0806'/%3E%3Cpath d='M9 11l6 5-6 5' fill='none' stroke='%23ffb000' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cline x1='17' y1='21.5' x2='23' y2='21.5' stroke='%23ffb000' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E">
 
 <style>
   :root {
@@ -157,7 +158,7 @@
     <a class="brand" href="/"><span class="dot"></span><b>PubAPI</b>&nbsp;<span>//</span>&nbsp;<b>OffSec</b></a>
     <nav class="nav-links">
       <a href="/">Beranda</a>
-      <a href="/#endpoints">Endpoint</a>
+      <a href="/dashboard">Dashboard</a>
       <a href="/docs" class="active">Dokumentasi</a>
       <span class="tag">v1.0.0</span>
     </nav>
@@ -176,6 +177,12 @@
     <a href="#caching">Caching</a>
     <a href="#ssrf">SSRF guard</a>
     <a href="#config">Konfigurasi</a>
+
+    <h5>Akun</h5>
+    <a href="#auth"><code>POST</code> /auth/register</a>
+    <a href="#auth"><code>POST</code> /auth/login</a>
+    <a href="#auth"><code>POST</code> /keys</a>
+    <a href="#auth"><code>GET</code> /admin/logs</a>
 
     <h5>Recon</h5>
     <a href="#dns"><code>GET</code> /recon/dns</a>
@@ -255,33 +262,25 @@
     </div>
 
     <!-- AUTH -->
-    <h2 id="auth"><span class="kicker">Akses</span>Autentikasi</h2>
-    <p class="sec-desc">Autentikasi bersifat <b>opsional</b> dan mati secara default (endpoint terbuka, dilindungi rate limit). Aktifkan dengan <code>AUTH_ENABLED=true</code>. Saat aktif, seluruh <code>/api/v1/*</code> memerlukan kredensial — kecuali <code>POST /api/v1/auth/token</code> dan halaman publik (<code>/</code>, <code>/docs</code>, <code>/api</code>, <code>/health</code>).</p>
-    <p class="lead-note">Dua cara memberi kredensial pada request:</p>
-    <div class="tbl-scroll"><table><thead><tr><th>Metode</th><th>Header</th><th>Keterangan</th></tr></thead>
-      <tbody>
-        <tr><td>API key</td><td><code>X-API-Key: &lt;key&gt;</code></td><td>Key statis dari <code>AUTH_API_KEYS</code></td></tr>
-        <tr><td>Bearer</td><td><code>Authorization: Bearer &lt;api-key|jwt&gt;</code></td><td>Boleh API key langsung, atau JWT hasil token endpoint</td></tr>
-      </tbody></table></div>
-    <div class="lbl">Tukar API key → JWT</div>
-    <div class="code"><div class="code-h"><span>POST /api/v1/auth/token</span><span>public</span></div>
-<pre><span class="p">$</span> curl -X <span class="f">POST</span> <span class="u">http://localhost:8080/api/v1/auth/token</span> \
-     -d <span class="u">'{"api_key":"secret-key-123"}'</span>
-
-<span class="c"># respons</span>
-{ <span class="k">"data"</span>: {
-  <span class="k">"token"</span>: <span class="s">"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."</span>,
-  <span class="k">"token_type"</span>: <span class="s">"Bearer"</span>, <span class="k">"expires_in"</span>: <span class="n">1800</span> } }</pre></div>
-    <div class="lbl">Pakai token pada request</div>
+    <h2 id="auth"><span class="kicker">Akses</span>Autentikasi &amp; Akun</h2>
+    <p class="sec-desc">Akun (admin/client), API key, dan request logs tersimpan di SQLite. Alurnya: <b>daftar/login</b> → dapat <b>session JWT</b> → buat <b>API key</b> → panggil API dengan key. Kelola semuanya lewat <a href="/dashboard">Dashboard</a>. Endpoint recon/scan wajib kredensial hanya jika <code>AUTH_ENABLED=true</code> (halaman publik <code>/</code>, <code>/docs</code>, <code>/dashboard</code>, <code>/tos</code>, <code>/health</code>, dan <code>register/login</code> selalu terbuka).</p>
+    <div class="lbl">1 · Daftar / login (dapat session JWT)</div>
+    <div class="code"><div class="code-h"><span>POST /api/v1/auth/register · /auth/login</span><span>public</span></div>
+<pre><span class="p">$</span> curl -X <span class="f">POST</span> <span class="u">.../api/v1/auth/register</span> \
+     -d <span class="u">'{"email":"me@corp.com","password":"secret123","accept_tos":true}'</span>
+<span class="p">$</span> curl -X <span class="f">POST</span> <span class="u">.../api/v1/auth/login</span> -d <span class="u">'{"email":"me@corp.com","password":"secret123"}'</span>
+<span class="c"># -> { "data": { "token": "eyJ...", "user": { "role": "client" } } }</span></pre></div>
+    <div class="lbl">2 · Buat API key (pakai session JWT)</div>
+    <div class="code"><div class="code-h"><span>POST /api/v1/keys</span><span>jwt</span></div>
+<pre><span class="p">$</span> curl -X <span class="f">POST</span> <span class="u">.../api/v1/keys</span> -H <span class="u">"Authorization: Bearer $JWT"</span> -d <span class="u">'{"name":"laptop"}'</span>
+<span class="c"># -> { "data": { "key": "pk_...", "note": "shown once" } }  (simpan sekarang)</span></pre></div>
+    <div class="lbl">3 · Panggil API dengan API key</div>
     <div class="code"><div class="code-h"><span>authenticated request</span><span>200 / 401</span></div>
-<pre><span class="c"># dengan API key</span>
-<span class="p">$</span> curl <span class="u">".../api/v1/recon/dns?domain=example.com"</span> -H <span class="u">"X-API-Key: secret-key-123"</span>
-<span class="c"># dengan JWT</span>
-<span class="p">$</span> curl <span class="u">".../api/v1/recon/dns?domain=example.com"</span> -H <span class="u">"Authorization: Bearer $TOKEN"</span>
-
-<span class="c"># tanpa/keliru kredensial -> 401</span>
-{ <span class="k">"success"</span>: <span class="bad">false</span>, <span class="k">"error"</span>: { <span class="k">"code"</span>: <span class="s">"unauthorized"</span>, ... } }</pre></div>
-    <div class="note">JWT ditandatangani HS256 dengan <code>JWT_SECRET</code>, berlaku <code>JWT_TTL_MINUTES</code> (default 60). Bila secret tak diset saat auth aktif, server memakai secret acak sementara (token reset tiap restart).</div>
+<pre><span class="p">$</span> curl <span class="u">".../api/v1/recon/dns?domain=example.com"</span> -H <span class="u">"X-API-Key: pk_..."</span>
+<span class="c"># atau: -H "Authorization: Bearer pk_..."  (API key maupun JWT diterima)</span>
+<span class="c"># tanpa/keliru kredensial saat AUTH_ENABLED -> 401 unauthorized</span></pre></div>
+    <div class="note">Password di-hash bcrypt; API key disimpan sebagai hash SHA-256 (plaintext hanya ditampilkan sekali). JWT HS256 (<code>JWT_SECRET</code>), berlaku <code>JWT_TTL_MINUTES</code>. Endpoint <code>login</code>/<code>register</code> punya rate-limit lebih ketat (<code>AUTH_RATE_*</code>) untuk mencegah brute-force.</div>
+    <div class="note"><b>Admin</b> (role admin) memiliki akses <code>GET /api/v1/admin/users</code>, <code>/admin/logs</code>, dan <code>/admin/stats</code> untuk melihat pengguna &amp; siapa yang memakai API. Buat admin awal via <code>ADMIN_EMAIL</code> + <code>ADMIN_PASSWORD</code>.</div>
 
     <!-- ERRORS -->
     <h2 id="errors"><span class="kicker">Referensi</span>Kode error</h2>
@@ -343,10 +342,13 @@
           <tr><td><code>SCAN_CONCURRENCY</code></td><td><code>100</code></td><td>Worker paralel untuk scan/enum</td></tr>
           <tr><td><code>ALLOW_PRIVATE_TARGETS</code></td><td><code>false</code></td><td>Izinkan target private/loopback</td></tr>
           <tr><td><code>CACHE_ENABLED</code></td><td><code>true</code></td><td>Cache lookup eksternal (TTL)</td></tr>
-          <tr><td><code>AUTH_ENABLED</code></td><td><code>false</code></td><td>Wajibkan API key/JWT pada <code>/api/v1/*</code></td></tr>
-          <tr><td><code>AUTH_API_KEYS</code></td><td><code>—</code></td><td>Daftar API key valid, dipisah koma</td></tr>
-          <tr><td><code>JWT_SECRET</code></td><td><code>—</code></td><td>Secret HMAC untuk tanda tangan JWT</td></tr>
-          <tr><td><code>JWT_TTL_MINUTES</code></td><td><code>60</code></td><td>Masa berlaku token (menit)</td></tr>
+          <tr><td><code>DB_PATH</code></td><td><code>pubapi.db</code></td><td>File SQLite (akun, key, logs)</td></tr>
+          <tr><td><code>ADMIN_EMAIL</code></td><td><code>—</code></td><td>Email admin bootstrap (dibuat saat start)</td></tr>
+          <tr><td><code>ADMIN_PASSWORD</code></td><td><code>—</code></td><td>Password admin bootstrap</td></tr>
+          <tr><td><code>AUTH_ENABLED</code></td><td><code>false</code></td><td>Wajibkan API key/JWT pada recon/scan/web/util</td></tr>
+          <tr><td><code>JWT_SECRET</code></td><td><code>—</code></td><td>Secret HMAC untuk tanda tangan session JWT</td></tr>
+          <tr><td><code>JWT_TTL_MINUTES</code></td><td><code>60</code></td><td>Masa berlaku session (menit)</td></tr>
+          <tr><td><code>AUTH_RATE_RPS</code> / <code>AUTH_RATE_BURST</code></td><td><code>0.1</code> / <code>5</code></td><td>Rate-limit login/register (anti brute-force)</td></tr>
         </tbody>
       </table>
     </div>

@@ -14,14 +14,24 @@ import (
 	"time"
 
 	"pubapi/config"
+	"pubapi/internal/auth"
 	"pubapi/internal/router"
 	"pubapi/internal/service"
+	"pubapi/internal/store"
 )
 
 func main() {
 	cfg := config.Load()
 	service.SetCacheEnabled(cfg.CacheEnabled)
-	engine := router.New(cfg, webFS)
+
+	st, err := store.Open(cfg.DBPath)
+	if err != nil {
+		log.Fatalf("failed to open database %q: %v", cfg.DBPath, err)
+	}
+	defer st.Close()
+	bootstrapAdmin(st, cfg.AdminEmail, cfg.AdminPassword)
+
+	engine := router.New(cfg, webFS, st)
 
 	srv := &http.Server{
 		Addr:              net.JoinHostPort(cfg.Host, cfg.Port),
@@ -52,4 +62,28 @@ func main() {
 		log.Fatalf("forced shutdown: %v", err)
 	}
 	log.Println("stopped")
+}
+
+// bootstrapAdmin creates the admin account from env on first run, if configured
+// and not already present.
+func bootstrapAdmin(st *store.Store, email, password string) {
+	if email == "" || password == "" {
+		if n, _ := st.CountAdmins(); n == 0 {
+			log.Println("no admin account yet — set ADMIN_EMAIL and ADMIN_PASSWORD to create one")
+		}
+		return
+	}
+	if _, err := st.GetUserByEmail(email); err == nil {
+		return // already exists
+	}
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		log.Printf("bootstrap admin: failed to hash password: %v", err)
+		return
+	}
+	if _, err := st.CreateUser(email, hash, "admin", true); err != nil {
+		log.Printf("bootstrap admin: %v", err)
+		return
+	}
+	log.Printf("bootstrap admin account created: %s", email)
 }

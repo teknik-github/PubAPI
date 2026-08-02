@@ -10,10 +10,12 @@ import (
 	"pubapi/internal/auth"
 	"pubapi/internal/handlers"
 	"pubapi/internal/middleware"
+	"pubapi/internal/store"
 )
 
-// New builds the fully-wired Gin engine. web carries the embedded static site.
-func New(cfg *config.Config, web fs.FS) *gin.Engine {
+// New builds the fully-wired Gin engine. web carries the embedded static site;
+// st is the persistence layer for users, keys, and request logs.
+func New(cfg *config.Config, web fs.FS, st *store.Store) *gin.Engine {
 	gin.SetMode(cfg.Mode)
 
 	r := gin.New()
@@ -28,26 +30,57 @@ func New(cfg *config.Config, web fs.FS) *gin.Engine {
 	r.Use(middleware.RateLimit(cfg.RateLimitRPS, cfg.RateLimitBurst))
 
 	h := handlers.New(cfg, web)
-	authn := auth.New(cfg.AuthEnabled, cfg.APIKeys, cfg.JWTSecret, cfg.JWTTTL)
-	authH := handlers.NewAuthHandler(authn)
+	authn := auth.NewService(st, cfg.JWTSecret, cfg.JWTTTL, cfg.AuthEnabled)
+	acct := handlers.NewAccountHandler(st, authn)
+	admin := handlers.NewAdminHandler(st)
+	reqLog := middleware.NewRequestLogger(st)
 
-	// Static site
+	// Static site & meta
 	r.GET("/", h.Index)
 	r.GET("/docs", h.Docs)
-	// Machine-readable endpoint catalog
+	r.GET("/dashboard", h.Dashboard)
+	r.GET("/tos", h.TOS)
 	r.GET("/api", h.Catalog)
 	r.GET("/health", h.Health)
 	r.NoRoute(h.NotFound)
 
+	// Every /api/v1 request is logged for admin visibility.
 	v1 := r.Group("/api/v1")
-	// Token issuance is public so clients can obtain a JWT from an API key.
-	v1.POST("/auth/token", authH.Token)
+	v1.Use(reqLog.Middleware())
 
-	// Everything else requires authentication when auth is enabled.
-	protected := v1.Group("")
-	protected.Use(middleware.Auth(authn))
+	// Public auth endpoints — protected by a stricter per-IP limiter to blunt
+	// credential brute-force and mass account creation.
+	authGrp := v1.Group("")
+	authGrp.Use(middleware.RateLimit(cfg.AuthRateRPS, cfg.AuthRateBurst))
 	{
-		recon := protected.Group("/recon")
+		authGrp.POST("/auth/register", acct.Register)
+		authGrp.POST("/auth/login", acct.Login)
+	}
+
+	// Session-authenticated account & key management.
+	account := v1.Group("")
+	account.Use(middleware.RequireUser(authn))
+	{
+		account.GET("/account", acct.Account)
+		account.POST("/keys", acct.CreateKey)
+		account.GET("/keys", acct.ListKeys)
+		account.DELETE("/keys/:id", acct.RevokeKey)
+	}
+
+	// Admin-only visibility.
+	adminGrp := v1.Group("/admin")
+	adminGrp.Use(middleware.RequireAdmin(authn))
+	{
+		adminGrp.GET("/users", admin.Users)
+		adminGrp.GET("/logs", admin.Logs)
+		adminGrp.GET("/stats", admin.Stats)
+	}
+
+	// The recon/scan/web/util API surface — guarded by API key/JWT when enabled.
+	api := v1.Group("")
+	api.Use(middleware.APIAuth(authn))
+	{
+		recon := api.Group("/recon")
 		{
 			recon.GET("/dns", h.DNS)
 			recon.GET("/subdomain", h.Subdomain)
@@ -59,12 +92,12 @@ func New(cfg *config.Config, web fs.FS) *gin.Engine {
 			recon.GET("/ip", h.IPInfo)
 			recon.GET("/wayback", h.Wayback)
 		}
-		scan := protected.Group("/scan")
+		scan := api.Group("/scan")
 		{
 			scan.POST("/ports", h.PortScan)
 			scan.GET("/banner", h.Banner)
 		}
-		web := protected.Group("/web")
+		web := api.Group("/web")
 		{
 			web.GET("/headers", h.Headers)
 			web.GET("/tech", h.Tech)
@@ -72,7 +105,7 @@ func New(cfg *config.Config, web fs.FS) *gin.Engine {
 			web.GET("/surface", h.Surface)
 			web.POST("/probe", h.Probe)
 		}
-		util := protected.Group("/util")
+		util := api.Group("/util")
 		{
 			util.POST("/hash", h.HashText)
 			util.POST("/hash-identify", h.IdentifyHash)
