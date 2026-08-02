@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,6 +23,14 @@ import (
 
 func main() {
 	cfg := config.Load()
+
+	// CLI subcommand: create an admin account and exit.
+	//   pubapi create-admin <email> <password>
+	if len(os.Args) >= 2 && os.Args[1] == "create-admin" {
+		runCreateAdmin(cfg, os.Args[2:])
+		return
+	}
+
 	service.SetCacheEnabled(cfg.CacheEnabled)
 
 	st, err := store.Open(cfg.DBPath)
@@ -62,6 +71,35 @@ func main() {
 		log.Fatalf("forced shutdown: %v", err)
 	}
 	log.Println("stopped")
+}
+
+// runCreateAdmin creates an admin account from the CLI, then exits.
+func runCreateAdmin(cfg *config.Config, args []string) {
+	if len(args) < 2 {
+		log.Fatal("usage: pubapi create-admin <email> <password>")
+	}
+	email := strings.ToLower(strings.TrimSpace(args[0]))
+	password := args[1]
+	if email == "" || len(password) < 8 {
+		log.Fatal("email required and password must be at least 8 characters")
+	}
+	st, err := store.Open(cfg.DBPath)
+	if err != nil {
+		log.Fatalf("failed to open database %q: %v", cfg.DBPath, err)
+	}
+	defer st.Close()
+	if _, err := st.GetUserByEmail(email); err == nil {
+		log.Fatalf("a user with email %q already exists", email)
+	}
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		log.Fatalf("failed to hash password: %v", err)
+	}
+	u, err := st.CreateUser(email, hash, "admin", true)
+	if err != nil {
+		log.Fatalf("failed to create admin: %v", err)
+	}
+	log.Printf("admin account created: %s (id=%d) in %s", u.Email, u.ID, cfg.DBPath)
 }
 
 // bootstrapAdmin creates the admin account from env on first run, if configured

@@ -52,6 +52,14 @@
   .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);border-radius:10px;overflow:hidden}
   .stat{background:var(--panel);padding:16px 18px}.stat .n{font-family:var(--mono);font-size:24px;color:var(--amber);font-weight:700}.stat .l{font-size:12px;color:var(--ink-dim)}
   .hidden{display:none}
+  .overlay{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.62);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:20px}
+  .overlay.hidden{display:none}
+  .modal{background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--border-hi);border-radius:14px;padding:26px;max-width:420px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+  .modal h3{font-family:var(--mono);margin:0 0 10px;color:var(--ink);font-size:18px;word-break:break-word}
+  .modal p{color:var(--ink-dim);font-size:14px;margin:0;line-height:1.55}
+  .modal .kn{color:var(--amber);font-family:var(--mono)}
+  .btn-danger-solid{background:var(--blocked);color:#180606;border:1px solid var(--blocked)}
+  .btn-danger-solid:hover{filter:brightness(1.12)}
   .authwrap{max-width:440px;margin:20px auto}
   .checkbox{display:flex;gap:9px;align-items:flex-start;margin:14px 0;font-size:13px;color:var(--ink-dim)}
   .checkbox input{margin-top:3px}
@@ -148,6 +156,18 @@
   </section>
 </main>
 
+<!-- Custom confirm modal (replaces window.confirm) -->
+<div id="confirmOverlay" class="overlay hidden" role="dialog" aria-modal="true">
+  <div class="modal">
+    <h3 id="confirmTitle"></h3>
+    <p id="confirmMsg"></p>
+    <div class="row" style="justify-content:flex-end;margin-top:20px">
+      <button class="btn btn-ghost" id="confirmCancel">Batal</button>
+      <button class="btn btn-danger-solid" id="confirmOk">Revoke</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   var TOKEN = localStorage.getItem('pubapi_token') || '';
@@ -201,17 +221,39 @@
 
   $('logoutBtn').onclick=function(e){e.preventDefault();logout();};
 
+  // ---- Custom confirm modal ----
+  var pendingConfirm=null;
+  function showConfirm(title,html,okLabel,onOk){
+    $('confirmTitle').textContent=title;
+    $('confirmMsg').innerHTML=html;
+    $('confirmOk').textContent=okLabel||'Revoke';
+    pendingConfirm=onOk;show($('confirmOverlay'),true);$('confirmOk').focus();
+  }
+  function hideConfirm(){show($('confirmOverlay'),false);pendingConfirm=null;}
+  $('confirmCancel').onclick=hideConfirm;
+  $('confirmOverlay').onclick=function(e){if(e.target===$('confirmOverlay'))hideConfirm();};
+  $('confirmOk').onclick=function(){var fn=pendingConfirm;hideConfirm();if(fn)fn();};
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!$('confirmOverlay').classList.contains('hidden'))hideConfirm();});
+
   // ---- Keys ----
+  var keyNames={};
   async function loadKeys(){
-    try{var d=await api('GET','/keys',null,true);var b=$('keysBody');b.innerHTML='';
+    try{var d=await api('GET','/keys',null,true);var b=$('keysBody');b.innerHTML='';keyNames={};
       if(!d.keys.length){b.innerHTML='<tr><td colspan="7" class="muted">Belum ada key.</td></tr>';return;}
       d.keys.forEach(function(k){
+        keyNames[k.id]=k.name;
         var status=k.revoked?'<span class="muted">revoked</span>':'<span style="color:var(--open)">active</span>';
         var act=k.revoked?'':'<button class="btn btn-danger" data-revoke="'+k.id+'">Revoke</button>';
         b.innerHTML+='<tr><td>'+k.id+'</td><td>'+esc(k.name)+'</td><td>'+esc(k.prefix)+'…</td><td>'+esc(k.created_at)+'</td><td>'+esc(k.last_used_at||'—')+'</td><td>'+status+'</td><td>'+act+'</td></tr>';
       });
-      b.querySelectorAll('[data-revoke]').forEach(function(el){el.onclick=function(){revokeKey(el.getAttribute('data-revoke'));};});
+      b.querySelectorAll('[data-revoke]').forEach(function(el){el.onclick=function(){askRevoke(el.getAttribute('data-revoke'));};});
     }catch(err){msg($('msgKey'),err.message,false);}
+  }
+  function askRevoke(id){
+    var name=keyNames[id]||('#'+id);
+    showConfirm('Revoke Key '+name,
+      'Key <span class="kn">'+esc(name)+'</span> akan dinonaktifkan permanen dan tidak dapat dipakai lagi untuk memanggil API. Lanjutkan?',
+      'Revoke',function(){revokeKey(id);});
   }
   $('keyForm').onsubmit=async function(e){e.preventDefault();clearMsg($('msgKey'));
     try{var d=await api('POST','/keys',{name:$('keyName').value},true);
@@ -219,7 +261,7 @@
       var box=$('newKeyBox');box.className='keybox';box.innerHTML='<b style="color:var(--amber)">Key baru (simpan sekarang, tidak ditampilkan lagi):</b><br>'+esc(d.key);
       loadKeys();
     }catch(err){msg($('msgKey'),err.message,false);}};
-  async function revokeKey(id){if(!confirm('Revoke key #'+id+'?'))return;try{await api('DELETE','/keys/'+id,null,true);loadKeys();}catch(err){msg($('msgKey'),err.message,false);}}
+  async function revokeKey(id){try{await api('DELETE','/keys/'+id,null,true);loadKeys();}catch(err){msg($('msgKey'),err.message,false);}}
 
   // ---- Admin ----
   document.querySelectorAll('[data-atab]').forEach(function(t){t.onclick=function(){
