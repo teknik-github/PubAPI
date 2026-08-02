@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -19,6 +20,7 @@ type Config struct {
 	MaxScanPorts    int           // safety cap on ports scanned per request
 	ScanConcurrency int           // parallel workers for port scans
 	TrustedProxies  []string      // proxies Gin should trust for client IP
+	TrustedPlatform string        // real-client-IP header/platform (e.g. cloudflare)
 	AllowPrivate    bool          // allow targeting private/loopback/link-local IPs
 	CacheEnabled    bool          // cache slow external lookups (crt.sh, WHOIS, ...)
 
@@ -44,7 +46,8 @@ func Load() *Config {
 		DialTimeout:     time.Duration(getEnvInt("DIAL_TIMEOUT_MS", 3000)) * time.Millisecond,
 		MaxScanPorts:    getEnvInt("MAX_SCAN_PORTS", 1024),
 		ScanConcurrency: getEnvInt("SCAN_CONCURRENCY", 100),
-		TrustedProxies:  nil,
+		TrustedProxies:  splitCSV(getEnv("TRUSTED_PROXIES", "")),
+		TrustedPlatform: getEnv("TRUSTED_PLATFORM", ""),
 		AllowPrivate:    getEnvBool("ALLOW_PRIVATE_TARGETS", false),
 		CacheEnabled:    getEnvBool("CACHE_ENABLED", true),
 
@@ -72,6 +75,21 @@ func getEnvInt(key string, def int) int {
 		}
 	}
 	return def
+}
+
+// splitCSV parses a comma-separated env value into non-empty trimmed items.
+func splitCSV(v string) []string {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if s := strings.TrimSpace(p); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func getEnvBool(key string, def bool) bool {

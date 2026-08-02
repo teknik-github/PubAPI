@@ -3,6 +3,7 @@ package router
 
 import (
 	"io/fs"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -19,8 +20,24 @@ func New(cfg *config.Config, web fs.FS, st *store.Store) *gin.Engine {
 	gin.SetMode(cfg.Mode)
 
 	r := gin.New()
-	// Gin trusts all proxies by default; restrict unless configured otherwise.
-	_ = r.SetTrustedProxies(cfg.TrustedProxies)
+	// Client-IP resolution for reverse proxies / tunnels. Behind Cloudflare
+	// Tunnel the peer is the tunnel (e.g. 172.x docker gateway), so read the
+	// real visitor IP from the platform header instead.
+	if len(cfg.TrustedProxies) > 0 {
+		_ = r.SetTrustedProxies(cfg.TrustedProxies)
+	}
+	switch strings.ToLower(cfg.TrustedPlatform) {
+	case "cloudflare", "cf":
+		r.TrustedPlatform = gin.PlatformCloudflare // CF-Connecting-IP
+	case "fly", "flyio":
+		r.TrustedPlatform = gin.PlatformFlyIO
+	case "google", "gae", "appengine":
+		r.TrustedPlatform = gin.PlatformGoogleAppEngine
+	case "":
+		// no platform header — rely on trusted proxies / direct peer
+	default:
+		r.TrustedPlatform = cfg.TrustedPlatform // treat as a custom header name
+	}
 
 	r.Use(gin.Logger())
 	r.Use(middleware.Recovery())

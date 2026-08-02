@@ -23,6 +23,11 @@ services:
       DB_PATH: /data/pubapi.db
       CACHE_ENABLED: "${CACHE_ENABLED:-true}"
       ALLOW_PRIVATE_TARGETS: "${ALLOW_PRIVATE_TARGETS:-false}"
+      # Real client IP behind a reverse proxy / tunnel. Set to "cloudflare"
+      # when fronted by Cloudflare (Tunnel) so logs & rate-limit use the real
+      # visitor IP (CF-Connecting-IP) instead of the tunnel's internal IP.
+      TRUSTED_PLATFORM: "${TRUSTED_PLATFORM:-}"
+      TRUSTED_PROXIES: "${TRUSTED_PROXIES:-}"
       RATE_LIMIT_RPS: "${RATE_LIMIT_RPS:-5}"
       RATE_LIMIT_BURST: "${RATE_LIMIT_BURST:-10}"
       # Authentication (optional; see .env.example)

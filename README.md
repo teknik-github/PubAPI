@@ -74,6 +74,13 @@ docker compose down -v    # stop and WIPE the database volume
 
 Every setting from the table below can be provided in `.env`. The container ships a `HEALTHCHECK` (the binary self-probes `/health`, since the distroless image has no shell), so `docker ps` shows real health status.
 
+**Behind Cloudflare Tunnel** (or any reverse proxy) the app otherwise logs the tunnel's internal IP (e.g. `172.x`). Set `TRUSTED_PLATFORM=cloudflare` so request logs and per-IP rate limiting use the real visitor IP from `CF-Connecting-IP`:
+
+```bash
+# .env
+TRUSTED_PLATFORM=cloudflare
+```
+
 ## Configuration
 
 All settings are environment variables (see `.env.example`). Defaults are safe for a public deployment.
@@ -87,6 +94,8 @@ All settings are environment variables (see `.env.example`). Defaults are safe f
 | `DIAL_TIMEOUT_MS` | `3000` | Network dial timeout |
 | `MAX_SCAN_PORTS` | `1024` | Max ports per scan request |
 | `SCAN_CONCURRENCY` | `100` | Parallel workers for scans |
+| `TRUSTED_PLATFORM` | — | Real client-IP header behind a proxy: `cloudflare` (CF-Connecting-IP), `flyio`, or a custom header name |
+| `TRUSTED_PROXIES` | — | Comma-separated proxy IPs/CIDRs to trust for `X-Forwarded-For` |
 | `ALLOW_PRIVATE_TARGETS` | `false` | Allow private/loopback/link-local targets |
 | `CACHE_ENABLED` | `true` | Cache slow external lookups (per-type TTL) |
 | `DB_PATH` | `pubapi.db` | SQLite file (accounts, keys, request logs) |
