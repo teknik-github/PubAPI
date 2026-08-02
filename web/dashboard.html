@@ -32,6 +32,10 @@
   .btn-primary{background:var(--amber);color:#1a1200}.btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 20px var(--amber-glow)}
   .btn-ghost{background:transparent;color:var(--ink);border-color:var(--border-hi)}.btn-ghost:hover{border-color:var(--amber);color:var(--amber)}
   .btn-danger{background:transparent;color:var(--blocked);border-color:rgba(255,97,97,.4);font-size:12px;padding:6px 12px}.btn-danger:hover{background:rgba(255,97,97,.1)}
+  .btn:disabled{opacity:.35;cursor:not-allowed;pointer-events:none}
+  .pager{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:14px}
+  .pager .lbl{font-family:var(--mono);font-size:13px;color:var(--ink-dim)}
+  .btn-pg{font-family:var(--mono);padding:8px 14px}
   .tabs{display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:6px}
   .tab{font-family:var(--mono);font-size:13px;color:var(--ink-dim);background:none;border:none;padding:10px 14px;cursor:pointer;border-bottom:2px solid transparent}
   .tab.active{color:var(--amber);border-bottom-color:var(--amber)}
@@ -146,6 +150,11 @@
         <div id="aLogs" class="atab hidden">
           <div class="row" style="margin:14px 0"><input type="text" id="logFilter" placeholder="filter principal (mis. key:3 / anon)" style="max-width:280px"><button class="btn btn-ghost" id="logRefresh">Muat ulang</button></div>
           <div class="tbl-scroll"><table><thead><tr><th>Waktu</th><th>Method</th><th>Path</th><th>Status</th><th>IP</th><th>Principal</th><th>ms</th></tr></thead><tbody id="logsBody"></tbody></table></div>
+          <div class="pager">
+            <button class="btn btn-ghost btn-pg" id="logPrev" aria-label="Sebelumnya">‹</button>
+            <span class="lbl" id="logPageLabel">Halaman 1</span>
+            <button class="btn btn-ghost btn-pg" id="logNext" aria-label="Berikutnya">›</button>
+          </div>
         </div>
 
         <div id="aUsers" class="atab hidden">
@@ -267,7 +276,7 @@
   document.querySelectorAll('[data-atab]').forEach(function(t){t.onclick=function(){
     document.querySelectorAll('[data-atab]').forEach(function(x){x.classList.remove('active');});t.classList.add('active');
     ['stats','logs','users'].forEach(function(n){show($('a'+n.charAt(0).toUpperCase()+n.slice(1)),n===t.getAttribute('data-atab'));});
-    if(t.getAttribute('data-atab')==='logs')loadLogs();
+    if(t.getAttribute('data-atab')==='logs'){logPage=0;loadLogs();}
     if(t.getAttribute('data-atab')==='users')loadUsers();
     if(t.getAttribute('data-atab')==='stats')loadStats();
   };});
@@ -281,12 +290,25 @@
     $('topPrincipals').innerHTML=(s.top_principals||[]).map(function(c){return '<tr><td>'+esc(c.label)+'</td><td>'+c.count+'</td></tr>';}).join('')||'<tr><td class="muted" colspan="2">—</td></tr>';
   }catch(err){}}
 
-  async function loadLogs(){try{var p=$('logFilter').value.trim();var d=await api('GET','/admin/logs?limit=100'+(p?'&principal='+encodeURIComponent(p):''),null,true);
-    $('logsBody').innerHTML=d.logs.map(function(l){var sc='s'+String(l.status).charAt(0);
+  var logPage=0,LOG_SIZE=10,logHasNext=false;
+  async function loadLogs(){try{
+    var p=$('logFilter').value.trim();
+    var off=logPage*LOG_SIZE;
+    // Fetch one extra row to detect whether a next page exists.
+    var d=await api('GET','/admin/logs?limit='+(LOG_SIZE+1)+'&offset='+off+(p?'&principal='+encodeURIComponent(p):''),null,true);
+    logHasNext=d.logs.length>LOG_SIZE;
+    var rows=d.logs.slice(0,LOG_SIZE);
+    $('logsBody').innerHTML=rows.map(function(l){var sc='s'+String(l.status).charAt(0);
       return '<tr><td>'+esc(l.ts)+'</td><td>'+esc(l.method)+'</td><td>'+esc(l.path)+(l.query?'<span class="muted">?'+esc(l.query)+'</span>':'')+'</td><td class="st '+sc+'">'+l.status+'</td><td>'+esc(l.ip)+'</td><td>'+esc(l.principal)+'</td><td>'+l.latency_ms+'</td></tr>';
-    }).join('')||'<tr><td class="muted" colspan="7">Belum ada log.</td></tr>';
+    }).join('')||'<tr><td class="muted" colspan="7">'+(logPage===0?'Belum ada log.':'Tidak ada lagi.')+'</td></tr>';
+    $('logPageLabel').textContent='Halaman '+(logPage+1);
+    $('logPrev').disabled=logPage===0;
+    $('logNext').disabled=!logHasNext;
   }catch(err){}}
-  $('logRefresh').onclick=loadLogs;
+  $('logRefresh').onclick=function(){logPage=0;loadLogs();};
+  $('logPrev').onclick=function(){if(logPage>0){logPage--;loadLogs();}};
+  $('logNext').onclick=function(){if(logHasNext){logPage++;loadLogs();}};
+  $('logFilter').onkeydown=function(e){if(e.key==='Enter'){logPage=0;loadLogs();}};
 
   async function loadUsers(){try{var d=await api('GET','/admin/users',null,true);
     $('usersBody').innerHTML=d.users.map(function(u){return '<tr><td>'+u.id+'</td><td>'+esc(u.email)+'</td><td><span class="pill '+esc(u.role)+'">'+esc(u.role)+'</span></td><td>'+u.active_keys+'</td><td>'+esc(u.created_at)+'</td></tr>';}).join('')||'<tr><td class="muted" colspan="5">—</td></tr>';
