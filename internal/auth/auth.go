@@ -162,14 +162,20 @@ func (s *Service) AuthenticateAPI(r *http.Request) (string, error) {
 				return "key:" + strconv.FormatInt(owner.KeyID, 10), nil
 			}
 		} else if claims, err := s.VerifyJWT(cred); err == nil {
-			return "user:" + claims.Subject, nil
+			if id, e := strconv.ParseInt(claims.Subject, 10, 64); e == nil {
+				if _, e2 := s.store.GetUserByID(id); e2 == nil {
+					return "user:" + claims.Subject, nil
+				}
+			}
 		}
 	}
 	return "", ErrUnauthorized
 }
 
-// UserFromRequest resolves a Bearer JWT to its claims (dashboard endpoints).
-func (s *Service) UserFromRequest(r *http.Request) (*Claims, error) {
+// ResolveSession validates a Bearer JWT and confirms the user still exists,
+// returning the fresh user record. A deleted user's token stops working
+// immediately, which forces an effective logout on the next request.
+func (s *Service) ResolveSession(r *http.Request) (*store.User, error) {
 	authz := strings.TrimSpace(r.Header.Get("Authorization"))
 	if !strings.HasPrefix(authz, "Bearer ") {
 		return nil, ErrUnauthorized
@@ -178,5 +184,13 @@ func (s *Service) UserFromRequest(r *http.Request) (*Claims, error) {
 	if err != nil {
 		return nil, ErrUnauthorized
 	}
-	return claims, nil
+	id, err := strconv.ParseInt(claims.Subject, 10, 64)
+	if err != nil {
+		return nil, ErrUnauthorized
+	}
+	u, err := s.store.GetUserByID(id)
+	if err != nil {
+		return nil, ErrUnauthorized // user no longer exists
+	}
+	return u, nil
 }

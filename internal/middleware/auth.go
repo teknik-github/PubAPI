@@ -2,11 +2,13 @@ package middleware
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 
 	"pubapi/internal/auth"
 	"pubapi/internal/response"
+	"pubapi/internal/store"
 )
 
 // Context keys for values set by the auth middleware.
@@ -38,38 +40,39 @@ func APIAuth(a *auth.Service) gin.HandlerFunc {
 	}
 }
 
-// RequireUser requires a valid session JWT and stores the user's identity.
+// RequireUser requires a valid session JWT for an existing user.
 func RequireUser(a *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		claims, err := a.UserFromRequest(c.Request)
+		u, err := a.ResolveSession(c.Request)
 		if err != nil {
 			response.Abort(c, http.StatusUnauthorized, "unauthorized", "Login required.")
 			return
 		}
-		c.Set(CtxUserID, claims.Subject)
-		c.Set(CtxRole, claims.Role)
-		c.Set(CtxEmail, claims.Email)
-		c.Set(CtxPrincipal, "user:"+claims.Subject)
+		setIdentity(c, u)
 		c.Next()
 	}
 }
 
-// RequireAdmin requires a valid session JWT with the admin role.
+// RequireAdmin requires a valid session JWT for an existing admin user.
 func RequireAdmin(a *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		claims, err := a.UserFromRequest(c.Request)
+		u, err := a.ResolveSession(c.Request)
 		if err != nil {
 			response.Abort(c, http.StatusUnauthorized, "unauthorized", "Login required.")
 			return
 		}
-		if claims.Role != "admin" {
+		if u.Role != "admin" {
 			response.Abort(c, http.StatusForbidden, "forbidden", "Admin access required.")
 			return
 		}
-		c.Set(CtxUserID, claims.Subject)
-		c.Set(CtxRole, claims.Role)
-		c.Set(CtxEmail, claims.Email)
-		c.Set(CtxPrincipal, "user:"+claims.Subject)
+		setIdentity(c, u)
 		c.Next()
 	}
+}
+
+func setIdentity(c *gin.Context, u *store.User) {
+	c.Set(CtxUserID, strconv.FormatInt(u.ID, 10))
+	c.Set(CtxRole, u.Role)
+	c.Set(CtxEmail, u.Email)
+	c.Set(CtxPrincipal, "user:"+strconv.FormatInt(u.ID, 10))
 }

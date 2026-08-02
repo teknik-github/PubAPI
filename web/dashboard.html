@@ -33,6 +33,10 @@
   .btn-ghost{background:transparent;color:var(--ink);border-color:var(--border-hi)}.btn-ghost:hover{border-color:var(--amber);color:var(--amber)}
   .btn-danger{background:transparent;color:var(--blocked);border-color:rgba(255,97,97,.4);font-size:12px;padding:6px 12px}.btn-danger:hover{background:rgba(255,97,97,.1)}
   .btn:disabled{opacity:.35;cursor:not-allowed;pointer-events:none}
+  .btn-sm{font-size:11px;padding:5px 11px}
+  td.nowrap{white-space:nowrap}
+  .subtable table{min-width:auto;width:100%}
+  .subtable{padding:6px 0}
   .pager{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:14px}
   .pager .lbl{font-family:var(--mono);font-size:13px;color:var(--ink-dim)}
   .btn-pg{font-family:var(--mono);padding:8px 14px}
@@ -158,7 +162,8 @@
         </div>
 
         <div id="aUsers" class="atab hidden">
-          <div class="tbl-scroll"><table><thead><tr><th>ID</th><th>Email</th><th>Role</th><th>Key aktif</th><th>Terdaftar</th></tr></thead><tbody id="usersBody"></tbody></table></div>
+          <div id="msgUser" class="msg"></div>
+          <div class="tbl-scroll"><table><thead><tr><th>ID</th><th>Email</th><th>Role</th><th>Key aktif</th><th>Terdaftar</th><th>Aksi</th></tr></thead><tbody id="usersBody"></tbody></table></div>
         </div>
       </div>
     </div>
@@ -192,6 +197,9 @@
     var headers={'Content-Type':'application/json'};
     if(auth&&TOKEN)headers['Authorization']='Bearer '+TOKEN;
     var res=await fetch('/api/v1'+path,{method:method,headers:headers,body:body?JSON.stringify(body):undefined});
+    // A 401 on an authenticated call means the session is no longer valid
+    // (e.g. the account was deleted) — force an immediate logout.
+    if(res.status===401&&auth&&TOKEN){logout();throw new Error('Sesi berakhir. Silakan login lagi.');}
     var data=null; try{data=await res.json();}catch(e){}
     if(!res.ok){var m=(data&&data.error&&data.error.message)||('HTTP '+res.status);throw new Error(m);}
     return data.data;
@@ -310,9 +318,55 @@
   $('logNext').onclick=function(){if(logHasNext){logPage++;loadLogs();}};
   $('logFilter').onkeydown=function(e){if(e.key==='Enter'){logPage=0;loadLogs();}};
 
-  async function loadUsers(){try{var d=await api('GET','/admin/users',null,true);
-    $('usersBody').innerHTML=d.users.map(function(u){return '<tr><td>'+u.id+'</td><td>'+esc(u.email)+'</td><td><span class="pill '+esc(u.role)+'">'+esc(u.role)+'</span></td><td>'+u.active_keys+'</td><td>'+esc(u.created_at)+'</td></tr>';}).join('')||'<tr><td class="muted" colspan="5">—</td></tr>';
-  }catch(err){}}
+  var userEmails={};
+  async function loadUsers(){try{clearMsg($('msgUser'));var d=await api('GET','/admin/users',null,true);userEmails={};
+    var html='';
+    d.users.forEach(function(u){
+      userEmails[u.id]=u.email;
+      var isSelf=USER&&String(u.id)===String(USER.id);
+      var del=isSelf?'<span class="muted">(anda)</span>':'<button class="btn btn-danger btn-sm" data-udel="'+u.id+'">Hapus</button>';
+      html+='<tr><td>'+u.id+'</td><td>'+esc(u.email)+'</td><td><span class="pill '+esc(u.role)+'">'+esc(u.role)+'</span></td><td>'+u.active_keys+'</td><td>'+esc(u.created_at)+'</td>'+
+        '<td class="nowrap"><button class="btn btn-ghost btn-sm" data-ukeys="'+u.id+'">Keys</button> '+del+'</td></tr>'+
+        '<tr class="hidden" id="udetail-'+u.id+'"><td colspan="6"><div class="subtable" id="ukeys-'+u.id+'"></div></td></tr>';
+    });
+    $('usersBody').innerHTML=html||'<tr><td class="muted" colspan="6">—</td></tr>';
+    $('usersBody').querySelectorAll('[data-udel]').forEach(function(el){el.onclick=function(){askDeleteUser(el.getAttribute('data-udel'));};});
+    $('usersBody').querySelectorAll('[data-ukeys]').forEach(function(el){el.onclick=function(){toggleUserKeys(el.getAttribute('data-ukeys'));};});
+  }catch(err){msg($('msgUser'),err.message,false);}}
+
+  function askDeleteUser(id){
+    var email=userEmails[id]||('#'+id);
+    showConfirm('Hapus User '+email,
+      'User <span class="kn">'+esc(email)+'</span> beserta seluruh API key-nya akan dihapus permanen, dan sesinya langsung berakhir (logout otomatis). Lanjutkan?',
+      'Hapus',function(){deleteUser(id);});
+  }
+  async function deleteUser(id){try{await api('DELETE','/admin/users/'+id,null,true);loadUsers();loadStats();}catch(err){msg($('msgUser'),err.message,false);}}
+
+  async function toggleUserKeys(id){
+    var row=$('udetail-'+id),box=$('ukeys-'+id);
+    if(!row.classList.contains('hidden')){row.classList.add('hidden');return;}
+    row.classList.remove('hidden');box.innerHTML='<span class="muted">memuat…</span>';
+    try{var d=await api('GET','/admin/users/'+id+'/keys',null,true);
+      if(!d.keys.length){box.innerHTML='<span class="muted">User ini belum punya API key.</span>';return;}
+      box.innerHTML='<table><thead><tr><th>ID</th><th>Nama</th><th>Prefix</th><th>Terakhir</th><th>Status</th><th></th></tr></thead><tbody>'+
+        d.keys.map(function(k){
+          var st=k.revoked?'<span class="muted">revoked</span>':'<span style="color:var(--open)">active</span>';
+          var act=k.revoked?'':'<button class="btn btn-danger btn-sm" data-akr="'+k.id+'" data-akn="'+encodeURIComponent(k.name)+'">Revoke</button>';
+          return '<tr><td>'+k.id+'</td><td>'+esc(k.name)+'</td><td>'+esc(k.prefix)+'…</td><td>'+esc(k.last_used_at||'—')+'</td><td>'+st+'</td><td>'+act+'</td></tr>';
+        }).join('')+'</tbody></table>';
+      box.querySelectorAll('[data-akr]').forEach(function(el){el.onclick=function(){
+        askAdminRevoke(el.getAttribute('data-akr'),decodeURIComponent(el.getAttribute('data-akn')),id);
+      };});
+    }catch(err){box.innerHTML='<span style="color:var(--blocked)">'+esc(err.message)+'</span>';}
+  }
+  function askAdminRevoke(keyId,name,uid){
+    showConfirm('Revoke Key '+name,
+      'Key <span class="kn">'+esc(name)+'</span> milik user ini akan dinonaktifkan permanen dan tidak dapat dipakai lagi. Lanjutkan?',
+      'Revoke',function(){adminRevoke(keyId,uid);});
+  }
+  async function adminRevoke(keyId,uid){try{await api('DELETE','/admin/keys/'+keyId,null,true);
+    $('udetail-'+uid).classList.add('hidden');toggleUserKeys(uid);loadUsers();
+  }catch(err){msg($('msgUser'),err.message,false);}}
 
   render();
 })();

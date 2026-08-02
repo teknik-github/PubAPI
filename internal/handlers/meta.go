@@ -79,6 +79,9 @@ func (h *Handler) Catalog(c *gin.Context) {
 			},
 			"admin": []gin.H{
 				{"method": "GET", "path": "/api/v1/admin/users", "auth": "admin"},
+				{"method": "DELETE", "path": "/api/v1/admin/users/:id", "auth": "admin"},
+				{"method": "GET", "path": "/api/v1/admin/users/:id/keys", "auth": "admin"},
+				{"method": "DELETE", "path": "/api/v1/admin/keys/:id", "auth": "admin"},
 				{"method": "GET", "path": "/api/v1/admin/logs", "auth": "admin"},
 				{"method": "GET", "path": "/api/v1/admin/stats", "auth": "admin"},
 			},

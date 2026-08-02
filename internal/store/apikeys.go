@@ -92,3 +92,15 @@ func (s *Store) RevokeAPIKey(id, userID int64) error {
 	}
 	return nil
 }
+
+// AdminRevokeAPIKey revokes any key by id, regardless of owner.
+func (s *Store) AdminRevokeAPIKey(id int64) error {
+	res, err := s.db.Exec(`UPDATE api_keys SET revoked = 1 WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

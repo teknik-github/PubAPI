@@ -214,7 +214,7 @@ curl "localhost:8080/api/v1/recon/dns?domain=example.com" -H "X-API-Key: $KEY"
 
 - **Passwords** hashed with bcrypt; **API keys** stored as SHA-256 hashes (plaintext shown once).
 - **Sessions** are HS256 JWTs (`JWT_SECRET`, `JWT_TTL_MINUTES`); `login`/`register` carry a stricter rate limit to blunt brute-force.
-- **Admin** (`ADMIN_EMAIL`) can view users, request logs, and usage stats via `/api/v1/admin/*` and the dashboard — so you can see who is using the API.
+- **Admin** (`ADMIN_EMAIL`) can view users, request logs, and usage stats, **delete users**, and **revoke any user's API key** via `/api/v1/admin/*` and the dashboard. Deleting a user ends their session immediately (sessions verify the account still exists on every request) and cascades to their keys.
 - **Request logging:** every `/api/v1/*` call is recorded (time, method, path, status, IP, principal, latency).
 - `AUTH_ENABLED` controls only whether the recon/scan API requires a key; accounts/dashboard/logging work regardless.
 

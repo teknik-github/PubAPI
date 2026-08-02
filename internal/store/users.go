@@ -90,6 +90,19 @@ type UserSummary struct {
 	ActiveKeys int    `json:"active_keys"`
 }
 
+// DeleteUser removes a user (cascading to their API keys). Request logs are
+// intentionally retained for audit history.
+func (s *Store) DeleteUser(id int64) error {
+	res, err := s.db.Exec(`DELETE FROM users WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // CountAdmins returns how many admin users exist.
 func (s *Store) CountAdmins() (int, error) {
 	var n int

@@ -72,6 +72,9 @@ func New(cfg *config.Config, web fs.FS, st *store.Store) *gin.Engine {
 	adminGrp.Use(middleware.RequireAdmin(authn))
 	{
 		adminGrp.GET("/users", admin.Users)
+		adminGrp.DELETE("/users/:id", admin.DeleteUser)
+		adminGrp.GET("/users/:id/keys", admin.UserKeys)
+		adminGrp.DELETE("/keys/:id", admin.RevokeKey)
 		adminGrp.GET("/logs", admin.Logs)
 		adminGrp.GET("/stats", admin.Stats)
 	}
