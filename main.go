@@ -31,6 +31,13 @@ func main() {
 		return
 	}
 
+	// CLI subcommand: liveness probe for container healthchecks.
+	//   pubapi healthcheck  -> exit 0 if the local server answers /health
+	if len(os.Args) >= 2 && os.Args[1] == "healthcheck" {
+		runHealthcheck(cfg)
+		return
+	}
+
 	service.SetCacheEnabled(cfg.CacheEnabled)
 
 	st, err := store.Open(cfg.DBPath)
@@ -71,6 +78,21 @@ func main() {
 		log.Fatalf("forced shutdown: %v", err)
 	}
 	log.Println("stopped")
+}
+
+// runHealthcheck probes the local /health endpoint and exits 0 (healthy) or 1.
+// Used as the container HEALTHCHECK since the distroless image has no curl.
+func runHealthcheck(cfg *config.Config) {
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:" + cfg.Port + "/health")
+	if err != nil {
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		os.Exit(1)
+	}
+	os.Exit(0)
 }
 
 // runCreateAdmin creates an admin account from the CLI, then exits.

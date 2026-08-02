@@ -1,0 +1,24 @@
+# VCS & CI
+.git
+.gitignore
+.github
+
+# Build output
+bin/
+*.exe
+*.out
+
+# Local data & secrets
+.env
+*.db
+*.db-wal
+*.db-shm
+
+# Editor/OS
+.DS_Store
+.idea/
+.vscode/
+.claude/
+
+# Docs that aren't needed in the image
+README.md

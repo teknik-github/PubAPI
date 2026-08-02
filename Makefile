@@ -1,7 +1,7 @@
 BINARY := pubapi
 GO     := go
 
-.PHONY: run build test vet fmt tidy docker clean
+.PHONY: run build test vet fmt tidy docker up down logs clean
 
 run:
 	$(GO) run .
@@ -23,6 +23,15 @@ tidy:
 
 docker:
 	docker build -t pubapi-offsec:latest .
+
+up:
+	docker compose up -d --build
+
+down:
+	docker compose down
+
+logs:
+	docker compose logs -f
 
 clean:
 	rm -rf bin/ $(BINARY)

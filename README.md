@@ -55,8 +55,24 @@ make build           # -> bin/pubapi
 
 ```bash
 make docker
-docker run -p 8080:8080 pubapi-offsec:latest
+docker run -p 8080:8080 -v pubapi-data:/data pubapi-offsec:latest
 ```
+
+### Docker Compose (recommended)
+
+The SQLite database (accounts, API keys, request logs) is persisted in the `pubapi-data` named volume, so it survives restarts and rebuilds.
+
+```bash
+cp .env.example .env     # optional: set ADMIN_EMAIL / ADMIN_PASSWORD / JWT_SECRET
+docker compose up -d --build
+# → http://localhost:8080   (override host port with HOST_PORT in .env)
+
+docker compose logs -f    # view logs
+docker compose down       # stop (keeps data)
+docker compose down -v    # stop and WIPE the database volume
+```
+
+Every setting from the table below can be provided in `.env`. The container ships a `HEALTHCHECK` (the binary self-probes `/health`, since the distroless image has no shell), so `docker ps` shows real health status.
 
 ## Configuration
 
@@ -186,7 +202,8 @@ curl -X POST http://localhost:8080/api/v1/util/jwt-decode \
 │   ├── service/             # recon / scan / web / util logic + validation
 │   └── response/            # uniform JSON envelope
 ├── Dockerfile
-├── Makefile
+├── docker-compose.yml       # service + persistent SQLite volume + healthcheck
+├── Makefile                 # run/build/test + up/down/logs (compose)
 └── .env.example
 ```
 

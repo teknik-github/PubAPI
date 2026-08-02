@@ -1,0 +1,48 @@
+# PubAPI OffSec — Docker Compose
+#
+# Quick start:
+#   cp .env.example .env      # optional: set ADMIN_EMAIL/ADMIN_PASSWORD/JWT_SECRET
+#   docker compose up -d --build
+#   open http://localhost:8080
+#
+# The SQLite database (accounts, API keys, request logs) is persisted in the
+# named volume `pubapi-data`, so data survives container restarts and rebuilds.
+
+services:
+  pubapi:
+    build: .
+    image: pubapi-offsec:latest
+    container_name: pubapi
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8080
+      GIN_MODE: release
+      DB_PATH: /data/pubapi.db
+      CACHE_ENABLED: "${CACHE_ENABLED:-true}"
+      ALLOW_PRIVATE_TARGETS: "${ALLOW_PRIVATE_TARGETS:-false}"
+      RATE_LIMIT_RPS: "${RATE_LIMIT_RPS:-5}"
+      RATE_LIMIT_BURST: "${RATE_LIMIT_BURST:-10}"
+      # Authentication (optional; see .env.example)
+      AUTH_ENABLED: "${AUTH_ENABLED:-false}"
+      JWT_SECRET: "${JWT_SECRET:-}"
+      JWT_TTL_MINUTES: "${JWT_TTL_MINUTES:-60}"
+      AUTH_RATE_RPS: "${AUTH_RATE_RPS:-0.1}"
+      AUTH_RATE_BURST: "${AUTH_RATE_BURST:-5}"
+      # Bootstrap admin (created on first run if set)
+      ADMIN_EMAIL: "${ADMIN_EMAIL:-}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
+    volumes:
+      - pubapi-data:/data
+    healthcheck:
+      # distroless has no shell/curl — the binary self-probes /health.
+      test: ["CMD", "/pubapi", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  pubapi-data:
