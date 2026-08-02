@@ -162,6 +162,10 @@
         </div>
 
         <div id="aUsers" class="atab hidden">
+          <div class="row" style="margin:14px 0;justify-content:space-between">
+            <span class="muted" style="font-size:12px;font-family:var(--mono)">Klik <b style="color:var(--amber)">Keys</b> untuk melihat API key milik user.</span>
+            <button class="btn btn-ghost btn-sm" id="userRefresh">↻ Muat ulang</button>
+          </div>
           <div id="msgUser" class="msg"></div>
           <div class="tbl-scroll"><table><thead><tr><th>ID</th><th>Email</th><th>Role</th><th>Key aktif</th><th>Terdaftar</th><th>Aksi</th></tr></thead><tbody id="usersBody"></tbody></table></div>
         </div>
@@ -367,6 +371,7 @@
   async function adminRevoke(keyId,uid){try{await api('DELETE','/admin/keys/'+keyId,null,true);
     $('udetail-'+uid).classList.add('hidden');toggleUserKeys(uid);loadUsers();
   }catch(err){msg($('msgUser'),err.message,false);}}
+  $('userRefresh').onclick=loadUsers;
 
   render();
 })();
