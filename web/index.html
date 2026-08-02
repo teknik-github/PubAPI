@@ -270,6 +270,10 @@
   .foot { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; }
   .foot .brand { font-size: 14px; }
   .foot p { color: var(--ink-faint); font-size: 13px; font-family: var(--mono); margin: 0; }
+  .foot-links { display: flex; gap: 22px; font-family: var(--mono); font-size: 13px; flex-wrap: wrap; }
+  .foot-links a { color: var(--ink-dim); }
+  .foot-links a:hover { color: var(--amber); }
+  .foot-links a.tos { color: var(--amber); }
 
   @media (max-width: 880px) {
     .hero-grid { grid-template-columns: 1fr; gap: 30px; }
@@ -541,6 +545,11 @@
 <footer>
   <div class="wrap foot">
     <div class="brand"><span class="dot"></span><b>PubAPI</b>&nbsp;<span>//</span>&nbsp;<b>OffSec</b></div>
+    <nav class="foot-links">
+      <a href="/tos" class="tos">Terms of Service</a>
+      <a href="/docs">Dokumentasi</a>
+      <a href="/dashboard">Dashboard</a>
+    </nav>
     <p>Go 1.26 · Gin · MIT-style · untuk riset keamanan &amp; edukasi</p>
   </div>
 </footer>

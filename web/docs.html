@@ -140,6 +140,10 @@
   .foot { max-width:1240px; margin:0 auto; padding:0 24px; display:flex; justify-content:space-between;
     flex-wrap:wrap; gap:12px; align-items:center; position:relative; z-index:2; }
   .foot p { font-family:var(--mono); font-size:13px; color:var(--ink-faint); margin:0; }
+  .foot-links { display:flex; gap:22px; font-family:var(--mono); font-size:13px; flex-wrap:wrap; }
+  .foot-links a { color:var(--ink-dim); }
+  .foot-links a:hover { color:var(--amber); }
+  .foot-links a.tos { color:var(--amber); }
 
   html { scroll-behavior:smooth; }
   @media (prefers-reduced-motion: reduce) { html{scroll-behavior:auto} .brand .dot{animation:none} }
@@ -797,6 +801,11 @@
 <footer>
   <div class="foot">
     <a class="brand" href="/"><span class="dot"></span><b>PubAPI</b>&nbsp;<span>//</span>&nbsp;<b>OffSec</b></a>
+    <nav class="foot-links">
+      <a href="/tos" class="tos">Terms of Service</a>
+      <a href="/">Beranda</a>
+      <a href="/dashboard">Dashboard</a>
+    </nav>
     <p>Go 1.26 · Gin · untuk riset keamanan &amp; edukasi</p>
   </div>
 </footer>
